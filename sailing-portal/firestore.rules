@@ -1,0 +1,150 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- Helpers ----------
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function myUid() {
+      return request.auth.uid;
+    }
+
+    function myEmail() {
+      return request.auth.token.email;
+    }
+
+    function isNUEmail() {
+      return signedIn()
+        && myEmail() != null
+        && myEmail().matches('.*@u\\.northwestern\\.edu$');
+    }
+
+    function userDoc(uid) {
+      return get(/databases/$(database)/documents/users/$(uid));
+    }
+
+    function myRole() {
+      return signedIn() ? userDoc(myUid()).data.role : null;
+    }
+
+    function isChair() {
+      return myRole() == "chair";
+    }
+
+    function isMember() {
+      return myRole() == "member";
+    }
+
+    function packetsReleased() {
+      return exists(/databases/$(database)/documents/settings/global)
+        && get(/databases/$(database)/documents/settings/global).data.packetsReleased == true;
+    }
+
+    function memberCanAccessProspie(prospieUid) {
+      return packetsReleased()
+        || (
+          isMember()
+          && exists(/databases/$(database)/documents/stage1Queue/$(prospieUid))
+          && get(/databases/$(database)/documents/stage1Queue/$(prospieUid)).data.claimedBy == myUid()
+          && get(/databases/$(database)/documents/stage1Queue/$(prospieUid)).data.state == "claimed"
+        );
+    }
+
+    // ---------- Users ----------
+    match /users/{uid} {
+      allow read: if signedIn() && (uid == myUid() || isChair());
+
+      // NU users can create their own user doc, but only as role="prospie"
+      allow create: if signedIn()
+        && uid == myUid()
+        && isNUEmail()
+        && request.resource.data.role == "prospie"
+        && request.resource.data.email == myEmail();
+
+      // User can update their own non-role fields; chair can update anything (including role)
+      allow update: if signedIn() && (
+        isChair()
+        || (
+          uid == myUid()
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.email == resource.data.email
+        )
+      );
+
+      allow delete: if false;
+    }
+
+    // ---------- Settings ----------
+    match /settings/{docId} {
+      allow read: if signedIn();
+      allow write: if isChair();
+    }
+
+    // ---------- Prospies ----------
+    match /prospies/{prospieUid} {
+      allow read: if isChair()
+        || (signedIn() && prospieUid == myUid())
+        || memberCanAccessProspie(prospieUid);
+
+      allow create: if signedIn()
+        && prospieUid == myUid()
+        && isNUEmail()
+        && myRole() == "prospie";
+
+      allow update: if isChair()
+        || (signedIn() && prospieUid == myUid() && myRole() == "prospie");
+
+      allow delete: if isChair();
+    }
+
+    // ---------- Stage 1 Queue ----------
+    match /stage1Queue/{prospieUid} {
+      // Members/chairs can read the queue; prospie can read own entry
+      allow read: if isChair()
+        || isMember()
+        || (signedIn() && prospieUid == myUid());
+
+      // Prospie checks in: create their own queue entry
+      allow create: if signedIn()
+        && prospieUid == myUid()
+        && myRole() == "prospie"
+        && isNUEmail()
+        && request.resource.data.prospieUid == myUid()
+        && request.resource.data.state == "waiting";
+
+      // Member claims: waiting -> claimed
+      allow update: if isChair()
+        || (
+          isMember()
+          && resource.data.state == "waiting"
+          && request.resource.data.state == "claimed"
+          && request.resource.data.claimedBy == myUid()
+        );
+
+      allow delete: if isChair();
+    }
+
+    // ---------- Interviews ----------
+    match /prospies/{prospieUid}/interviews/{interviewId} {
+      allow read: if isChair()
+        || (signedIn() && prospieUid == myUid())
+        || (isMember() && memberCanAccessProspie(prospieUid));
+
+      allow create: if isChair()
+        || (
+          isMember()
+          && memberCanAccessProspie(prospieUid)
+          && request.resource.data.stage == 1
+        );
+
+      allow update, delete: if isChair();
+    }
+
+    // ---------- Default deny ----------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
