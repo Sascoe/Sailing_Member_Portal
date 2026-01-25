@@ -2,14 +2,15 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import SignupPage from "./pages/SignupPage";
 import LoginPage from "./pages/LoginPage";
 import ProspieHome from "./pages/ProspieHome";
+import MemberHome from "./pages/MemberHome";
+import RecruitmentPage from "./pages/RecruitmentPage";
 import { useUserRole } from "./auth/useUserRole";
 
 function AppHome() {
-  const { role, loading } = useUserRole();
+  const { role, positions, loading } = useUserRole();
 
   if (loading) return <div className="p-6">Loading…</div>;
 
-  if (role === "chair") return <Navigate to="/chair" replace />;
   if (role === "member") return <Navigate to="/member" replace />;
   if (role === "prospie") return <Navigate to="/prospie" replace />;
 
@@ -25,7 +26,10 @@ export default function App() {
         <Route path="/app" element={<AppHome />} />
 
         <Route path="/prospie" element={<ProspieHome />} />
-        <Route path="/member" element={<div className="p-6">Member Home</div>} />
+
+        <Route path="/member" element={<MemberHome />} />
+        <Route path="/member/recruitment" element={<RecruitmentPage />} />
+
         <Route path="/chair" element={<div className="p-6">Chair Home</div>} />
 
         <Route path="*" element={<Navigate to="/app" replace />} />
@@ -33,3 +37,4 @@ export default function App() {
     </BrowserRouter>
   );
 }
+
