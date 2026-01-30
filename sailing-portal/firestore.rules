@@ -22,15 +22,21 @@ service cloud.firestore {
     }
 
     function userDoc(uid) {
-      return get(/databases/$(database)/documents/users/$(uid));
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    function hasPosition(pos) {
+      return signedIn()
+        && (userDoc(myUid()).positions != null)
+        && userDoc(myUid()).positions.hasAny([pos]);
     }
 
     function myRole() {
-      return signedIn() ? userDoc(myUid()).data.role : null;
+      return signedIn() ? userDoc(myUid()).role : null;
     }
 
     function isChair() {
-      return myRole() == "chair";
+      return hasPosition("recruitment_chair");
     }
 
     function isMember() {
@@ -51,6 +57,13 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/stage1Queue/$(prospieUid)).data.state == "claimed"
         );
     }
+
+    function isRecruitmentChair() {
+      return signedIn()
+      && userDoc(request.auth.uid).positions.hasAny(["recruitment_chair"]);
+    }
+
+    
 
     // ---------- Users ----------
     match /users/{uid} {
@@ -99,32 +112,61 @@ service cloud.firestore {
       allow delete: if isChair();
     }
 
-    // ---------- Stage 1 Queue ----------
-    match /stage1Queue/{prospieUid} {
-      // Members/chairs can read the queue; prospie can read own entry
-      allow read: if isChair()
-        || isMember()
-        || (signedIn() && prospieUid == myUid());
-
-      // Prospie checks in: create their own queue entry
-      allow create: if signedIn()
-        && prospieUid == myUid()
-        && myRole() == "prospie"
-        && isNUEmail()
-        && request.resource.data.prospieUid == myUid()
-        && request.resource.data.state == "waiting";
-
-      // Member claims: waiting -> claimed
-      allow update: if isChair()
-        || (
-          isMember()
-          && resource.data.state == "waiting"
-          && request.resource.data.state == "claimed"
-          && request.resource.data.claimedBy == myUid()
-        );
-
-      allow delete: if isChair();
+    match /prospies/{prospieId} {
+      allow read: if hasPosition("recruitment_chair");
     }
+
+    match /prospies/{prospieId} {
+      allow create, read, update: if signedIn() && request.auth.uid == prospieId;
+      allow delete: if false;
+    }
+
+    match /prospies/{prospieId} {
+      // Chair can read all prospies
+      allow read: if isRecruitmentChair();
+
+      // Prospie can read/write their own doc
+      allow create, read, update: if signedIn() && request.auth.uid == prospieId;
+
+      allow delete: if false;
+    }
+
+
+  // ---------- Stage 1 Queue ----------
+  match /stage1Queue/{prospieUid} {
+    
+    // Members/chairs can read the queue; prospie can read own entry
+    allow read: if isChair()
+      || isMember()
+      || (signedIn() && prospieUid == myUid());
+
+    // Prospie checks in: create their own queue entry
+    allow create: if signedIn()
+    && prospieUid == myUid()
+    && myRole() == "prospie"
+    && isNUEmail()
+    && request.resource.data.status == "waiting";
+
+    // Prospie can "re-check-in" idempotently ONLY while still waiting
+    // (This prevents the merge write from failing if the doc already exists.)
+    allow update: if (signedIn()
+        && prospieUid == myUid()
+        && resource.data.status == "waiting"
+        && request.resource.data.status == "waiting"
+      )
+      // OR: member claim waiting -> claimed
+      || (isMember()
+        && resource.data.status == "waiting"
+        && request.resource.data.status == "claimed"
+        && request.resource.data.claimedBy == myUid()
+      )
+      || isChair();
+
+    // Prospie can leave the queue (delete their own entry), chairs can also delete
+    allow delete: if isChair() || (signedIn() && prospieUid == myUid());
+  }
+
+
 
     // ---------- Interviews ----------
     match /prospies/{prospieUid}/interviews/{interviewId} {
