@@ -12,7 +12,7 @@ type ProspieRow = {
 };
 
 export default function ProspiesListPage() {
-  // ✅ Hooks FIRST (always called, every render)
+  // Hooks FIRST (always called, every render)
   const navigate = useNavigate();
   const { loading, positions } = useUserRole();
   const isRecruitmentChair = positions.includes("recruitment_chair");

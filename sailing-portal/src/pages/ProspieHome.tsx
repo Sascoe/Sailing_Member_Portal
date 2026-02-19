@@ -4,10 +4,10 @@ import {
   onSnapshot,
   serverTimestamp,
   setDoc,
+  getDoc,
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { auth, db } from "../app/firebase";
-import { getDoc } from "firebase/firestore";
 
 type QueueStatus = "waiting" | "claimed";
 
@@ -21,7 +21,9 @@ export default function ProspieHome() {
   useEffect(() => {
     if (!uid) return;
 
-    const ref = doc(db, "stage1Queue", uid);
+    // ✅ Stage 1 Sailing Queue
+    const ref = doc(db, "stage1SailingQueue", uid);
+
     const unsub = onSnapshot(ref, (snap) => {
       if (snap.exists()) {
         setQueueStatus(snap.data().status as QueueStatus);
@@ -38,22 +40,22 @@ export default function ProspieHome() {
     if (!uid) return;
     setError(null);
 
+    try {
       const prospieRef = doc(db, "prospies", uid);
       const prospieSnap = await getDoc(prospieRef);
-
       const name = prospieSnap.exists() ? prospieSnap.data().name ?? "" : "";
 
-    try {
-        await setDoc(doc(db, "stage1Queue", uid), {
-          uid,
-          name,
-          email: auth.currentUser?.email ?? "",
-          status: "waiting",
-          enqueuedAt: serverTimestamp(),
-        });
-      } catch (e: any) {
-        console.error(e);
-        setError(e?.message ?? "Failed to check in");
+      // ✅ Create queue entry in Stage 1 Sailing Queue
+      await setDoc(doc(db, "stage1SailingQueue", uid), {
+        uid,
+        name,
+        email: auth.currentUser?.email ?? "",
+        status: "waiting",
+        enqueuedAt: serverTimestamp(),
+      });
+    } catch (e: any) {
+      console.error(e);
+      setError(e?.message ?? "Failed to check in");
     }
   }
 
@@ -62,7 +64,8 @@ export default function ProspieHome() {
     setError(null);
 
     try {
-      await deleteDoc(doc(db, "stage1Queue", uid));
+      // ✅ Remove from Stage 1 Sailing Queue
+      await deleteDoc(doc(db, "stage1SailingQueue", uid));
     } catch (e: any) {
       console.error(e);
       setError(e?.message ?? "Failed to leave queue");
@@ -87,7 +90,7 @@ export default function ProspieHome() {
             onClick={checkIn}
             className="w-full rounded-lg bg-black px-4 py-2 font-semibold text-white"
           >
-            Check in for Stage 1
+            Check in for Stage 1 (Sailing)
           </button>
         )}
 
