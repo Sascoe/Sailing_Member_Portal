@@ -140,6 +140,10 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    allow update: if isChair()
+      && request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(["stage1Decision","stage1DecisionUpdatedAt","stage1DecisionUpdatedBy"]);
+
 
 // ---------- Stage 1 Sailing Queue ----------
 match /stage1SailingQueue/{prospieUid} {

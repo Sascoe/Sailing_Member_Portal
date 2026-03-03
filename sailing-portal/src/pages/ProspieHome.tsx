@@ -18,6 +18,8 @@ export default function ProspieHome() {
 
   const uid = auth.currentUser?.uid;
 
+  const prospieRef = doc(db, "prospies", uid);
+  
   useEffect(() => {
     if (!uid) return;
 
