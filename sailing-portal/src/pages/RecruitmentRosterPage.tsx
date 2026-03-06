@@ -8,11 +8,10 @@ import {
   writeBatch,
   serverTimestamp,
 } from "firebase/firestore";
-import { db, auth } from "../app/firebase";
+import { db, auth, functions } from "../app/firebase";
 import { useUserRole } from "../auth/useUserRole";
 
 import { httpsCallable } from "firebase/functions";
-import {functions} from "../app/firebase";
 
 type YesMaybeNo = "yes" | "maybe" | "no";
 type Stage1Decision = "undecided" | "advance" | "drop";
@@ -97,7 +96,7 @@ export default function RecruitmentRosterPage() {
   type SortKey = "score" | "lastName" | "gradYear" | "firstName";
   type SortDir = "asc" | "desc";
 
-  // ✅ Filters (ordered in UI later)
+  // Filters (ordered in UI later)
   const [dayFilter, setDayFilter] = useState<"all" | "day1" | "day2">("all");
   const [minScore, setMinScore] = useState<number>(0);
   const [sailingExpFilter, setSailingExpFilter] = useState<string>("all");
@@ -109,6 +108,10 @@ export default function RecruitmentRosterPage() {
   >("all");
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // action loading states
+  const [assigningSlots, setAssigningSlots] = useState(false);
+  const [finalizingStage1, setFinalizingStage1] = useState(false);
 
   function toggleSelected(id: string) {
     setSelected((prev) => {
@@ -139,6 +142,44 @@ export default function RecruitmentRosterPage() {
 
     await batch.commit();
     clearSelected();
+  }
+
+  // Assign Stage 2 slots button handler
+  async function handleAssignStage2Slots() {
+    if (!confirm("Assign Stage 2 time slots for all Stage 1 completed (not dropped) prospies?")) {
+      return;
+    }
+
+    setAssigningSlots(true);
+    try {
+      const assign = httpsCallable(functions, "assignStageTwoSlots");
+      const result = await assign({});
+      // result.data shape depends on what your function returns
+      console.log("assignStageTwoSlots result:", result.data);
+      alert("Stage 2 slots assigned successfully.");
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message ?? "Failed to assign Stage 2 slots.");
+    } finally {
+      setAssigningSlots(false);
+    }
+  }
+
+  // Existing: Finalize Stage 1 handler (wrapped w/ loading state)
+  async function handleFinalizeStage1() {
+    if (!confirm("Finalize Stage 1 decisions and send emails?")) return;
+
+    setFinalizingStage1(true);
+    try {
+      const finalize = httpsCallable(functions, "finalizeStage1");
+      const result: any = await finalize({});
+      alert(`Advanced: ${result.data.advanced}, Dropped: ${result.data.dropped}`);
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message ?? "Failed to finalize Stage 1.");
+    } finally {
+      setFinalizingStage1(false);
+    }
   }
 
   useEffect(() => {
@@ -202,7 +243,6 @@ export default function RecruitmentRosterPage() {
         if (dayFilter === "day1" && day1Key && key !== day1Key) return false;
         if (dayFilter === "day2" && day2Key && key !== day2Key) return false;
 
-        // If day2 is selected but we don't have a day2Key yet, show none (clear signal)
         if (dayFilter === "day2" && !day2Key) return false;
       }
 
@@ -239,7 +279,6 @@ export default function RecruitmentRosterPage() {
       let primary = 0;
 
       if (sortKey === "score") {
-        // baseline ASC; direction applied below
         primary = totalScore(A) - totalScore(B);
       } else if (sortKey === "lastName") {
         primary = (A.lastName ?? "").localeCompare(B.lastName ?? "");
@@ -252,7 +291,6 @@ export default function RecruitmentRosterPage() {
       const dirMult = sortDir === "asc" ? 1 : -1;
       let result = primary * dirMult;
 
-      // tie-breakers: last name asc, then first name asc
       if (result === 0) {
         result = (A.lastName ?? "").localeCompare(B.lastName ?? "");
         if (result === 0) {
@@ -276,7 +314,7 @@ export default function RecruitmentRosterPage() {
     sortDir,
   ]);
 
-  // Step 8: bucket counts (based on ALL loaded prospies)
+  // bucket counts (based on ALL loaded prospies)
   const counts = useMemo(() => {
     const c = { undecided: 0, advance: 0, drop: 0 };
     prospies.forEach((p) => {
@@ -345,23 +383,29 @@ export default function RecruitmentRosterPage() {
               <span className="font-semibold text-slate-900">{counts.drop}</span>
             </div>
 
+            {/* Assign Stage 2 Slots */}
             <button
               type="button"
-              onClick={async () => {
-                if (!confirm("Finalize Stage 1 decisions and send emails?")) return;
-
-                const finalize = httpsCallable(functions, "finalizeStage1");
-                const result = await finalize();
-                alert(`Advanced: ${result.data.advanced}, Dropped: ${result.data.dropped}`);
-              }}
-              className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white"
+              onClick={handleAssignStage2Slots}
+              disabled={assigningSlots || finalizingStage1}
+              className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
             >
-              Finalize Stage 1
+              {assigningSlots ? "Assigning…" : "Assign Stage 2 Slots"}
+            </button>
+
+            {/* Finalize Stage 1 */}
+            <button
+              type="button"
+              onClick={handleFinalizeStage1}
+              disabled={finalizingStage1 || assigningSlots}
+              className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {finalizingStage1 ? "Finalizing…" : "Finalize Stage 1"}
             </button>
           </div>
         </div>
 
-        {/* Filters row: requested order left->right, reset on the right */}
+        {/* Filters row */}
         <div className="mt-4 flex flex-wrap items-end justify-between gap-4">
           <div className="flex flex-wrap gap-3">
             {/* 1) Day */}
@@ -471,7 +515,7 @@ export default function RecruitmentRosterPage() {
             </label>
           </div>
 
-          {/* Reset on the right, fixed UI */}
+          {/* Reset + showing */}
           <div className="flex items-end gap-3">
             <button
               type="button"

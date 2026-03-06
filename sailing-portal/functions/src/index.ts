@@ -104,6 +104,17 @@ export const finalizeStage1 = onCall(async (request) => {
 
     const firstName = (data.firstName as string | undefined) ?? "";
 
+    const slot = data.stage2?.slot as string | undefined;
+
+    const slotLabelMap: Record<string, string> = {
+      thu_2_4: "Thursday 2–4pm",
+      thu_4_6: "Thursday 4–6pm",
+      fri_2_4: "Friday 2–4pm",
+      fri_4_6: "Friday 4–6pm",
+    };
+
+    const slotLabel = slot ? slotLabelMap[slot] ?? slot : "TBD";
+
     if (data.stage1Decision === "advance") {
       advancedCount++;
 
@@ -115,6 +126,10 @@ export const finalizeStage1 = onCall(async (request) => {
         stage1FinalizedBy: callerUid,
       });
 
+      if (!slot) { // in case someone didn't pick a slot
+        console.warn(`No slot assigned for ${uid}`);
+      }
+
       if (email) {
         batch.set(db.collection("mail").doc(), {
           to: email,
@@ -122,11 +137,18 @@ export const finalizeStage1 = onCall(async (request) => {
             subject: "Sailing Team – Stage 2 Invitation",
             text: `Hi ${firstName},
 
-Congratulations! You’ve advanced to Stage 2.
+              Congratulations! You’ve advanced to Stage 2 of sailing recruitment.
 
-We’ll follow up with your time slot shortly.
+              Your tryout is scheduled for:
 
-– Sailing Team`,
+              ${slotLabel}
+
+              Please show up at any time during this timeslot. The on-the-water portion should take ~20 minutes with a short interview afterwards. 
+              We recommend wearing athletic clothing. Your shoes WILL get wet, so please plan accordingly. We’re excited to see you on the water!
+
+              If there are any issues regarding your assigned timeslot or if you have questions about next steps, please respond to this email ASAP so that we can figure things out. 
+
+              – NUST Recruitment Chairs`,
           },
         });
       } else {
@@ -149,11 +171,11 @@ We’ll follow up with your time slot shortly.
             subject: "Sailing Team Recruitment Update",
             text: `Hi ${firstName},
 
-Thank you for trying out. Unfortunately we will not be moving forward this time.
+        Thank you for trying out. Unfortunately we will not be moving forward this time.
 
-We truly appreciate your effort.
+        We truly appreciate your effort.
 
-– Sailing Team`,
+        – Sailing Team`,
           },
         });
       } else {
@@ -169,5 +191,163 @@ We truly appreciate your effort.
     advanced: advancedCount,
     dropped: droppedCount,
     skippedNoEmail,
+  };
+});
+
+
+const ALL_STAGE2_SLOTS = ["thu_2_4", "thu_4_6", "fri_2_4", "fri_4_6"] as const;
+type Stage2Slot = (typeof ALL_STAGE2_SLOTS)[number];
+
+type ProspieForAssign = {
+  id: string; // uid
+  availability: Stage2Slot[];
+};
+
+function isValidSlot(v: unknown): v is Stage2Slot {
+  return typeof v === "string" && (ALL_STAGE2_SLOTS as readonly string[]).includes(v);
+}
+
+/**
+ * Assign Stage 2 time slots for all eligible prospies.
+ * Primary objective: assign a slot they selected (availability includes it).
+ * Secondary objective: keep groups balanced (choose slot with lowest current count).
+ *
+ * Writes:
+ *  - prospies/{uid}.stage2 = { slot, assignedAt, assignedBy }
+ *  - prospies/{uid}.status = "invited"
+ */
+export const assignStageTwoSlots = onCall(async (request) => {
+  // 1) Auth check
+  const callerUid = request.auth?.uid;
+  if (!callerUid) throw new HttpsError("unauthenticated", "Not signed in");
+
+  // 2) Authorization check (recruitment chair)
+  const userDoc = await db.doc(`users/${callerUid}`).get();
+  const positions = (userDoc.data()?.positions as unknown[]) ?? [];
+  if (!Array.isArray(positions) || !positions.includes("recruitment_chair")) {
+    throw new HttpsError("permission-denied", "Not authorized");
+  }
+
+  // 3) Optional: allow chairs to toggle which days/slots are active
+  // If you don’t have this yet, the default is all slots enabled.
+  const settingsSnap = await db.doc("settings/global").get();
+  const enabledSlotsRaw = settingsSnap.data()?.stage2EnabledSlots;
+  const enabledSlots: Stage2Slot[] = Array.isArray(enabledSlotsRaw)
+    ? enabledSlotsRaw.filter(isValidSlot)
+    : [...ALL_STAGE2_SLOTS];
+
+  if (enabledSlots.length === 0) {
+    throw new HttpsError("failed-precondition", "No Stage 2 slots are enabled.");
+  }
+
+  // 4) Load eligible prospies
+  const snapshot = await db
+    .collection("prospies")
+    .where("stage1Complete", "==", true)
+    .where("stage1Decision", "in", ["advanced", "undecided"])
+    .get();
+
+  // 5) Normalize prospie availability and filter invalid / missing
+  const prospies: ProspieForAssign[] = snapshot.docs.map(doc => {
+    const data = doc.data();
+
+    const availability =
+      (data.stage1SailingInterviewSummary?.availability ?? []) as Stage2Slot[];
+
+    return {
+      id: doc.id,
+      availability
+    };
+  });
+
+
+  // FOR TESTING 
+  console.log("Total prospies fetched:", prospies.length);
+
+  prospies.forEach(p => {
+    console.log("Prospie:", p.id, "availability:", p.availability);
+  });
+
+  const validProspies = prospies.filter(p => p.availability.length > 0);
+  // 6) Sort by “least availability first”
+  // This is a classic constraint-satisfaction heuristic: assign the hardest cases first.
+  validProspies.sort((a, b) => a.availability.length - b.availability.length);
+
+  // 7) Initialize counts (for balancing)
+  const slotCounts = new Map<Stage2Slot, number>();
+  enabledSlots.forEach((s) => slotCounts.set(s, 0));
+
+  // Track assignments and skipped reasons (useful for UI)
+  const assignments = new Map<string, Stage2Slot>();
+  const skippedNoAvailability: string[] = [];
+  const skippedNoEnabledMatch: string[] = [];
+
+  // 8) Greedy assignment
+  for (const p of validProspies) {
+
+      if (p.availability.length === 0) {
+        skippedNoAvailability.push(p.id);
+        continue;
+      }
+
+      const options = p.availability.filter((s) => enabledSlots.includes(s));
+
+      if (options.length === 0) {
+        skippedNoEnabledMatch.push(p.id);
+        continue;
+      }
+
+      // Find minimum slot count
+      let minCount = Infinity;
+
+      for (const s of options) {
+        const c = slotCounts.get(s) ?? 0;
+        if (c < minCount) {
+          minCount = c;
+        }
+      }
+
+      // Collect all slots tied for minimum
+     const bestSlots: Stage2Slot[] = [];
+      for (const s of options) {
+        const c = slotCounts.get(s) ?? 0;
+        if (c === minCount) bestSlots.push(s);
+      }
+
+      // bestSlots is Stage2Slot[], so chosenSlot is Stage2Slot
+      const chosenSlot = bestSlots[Math.floor(Math.random() * bestSlots.length)];
+
+      assignments.set(p.id, chosenSlot);
+      slotCounts.set(chosenSlot, (slotCounts.get(chosenSlot) ?? 0) + 1);
+    }
+
+  // 9) Persist results in a batch (one write per assigned prospie)
+  const batch = db.batch();
+  for (const [uid, slot] of assignments.entries()) {
+    const ref = db.doc(`prospies/${uid}`);
+
+    batch.update(ref, {
+      status: "invited", // or keep current if you prefer; but invited is usually right for Stage 2
+      stage: 2,
+      stage2: {
+        slot,
+        assignedAt: FieldValue.serverTimestamp(),
+        assignedBy: callerUid,
+      },
+    });
+  }
+
+  await batch.commit();
+
+  // 10) Return summary for UI
+  const countsObj: Record<string, number> = {};
+  for (const [slot, count] of slotCounts.entries()) countsObj[slot] = count;
+
+  return {
+    enabledSlots,
+    assigned: assignments.size,
+    skippedNoAvailability,
+    skippedNoEnabledMatch,
+    slotCounts: countsObj,
   };
 });
