@@ -244,7 +244,7 @@ export const assignStageTwoSlots = onCall(async (request) => {
   const snapshot = await db
     .collection("prospies")
     .where("stage1Complete", "==", true)
-    .where("stage1Decision", "in", ["advanced", "undecided"])
+    .where("stage1Decision", "in", ["advance", "undecided"])
     .get();
 
   // 5) Normalize prospie availability and filter invalid / missing

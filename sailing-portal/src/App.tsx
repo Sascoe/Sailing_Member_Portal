@@ -9,6 +9,11 @@ import ProspiesListPage from "./pages/ProspiesListPage";
 import Stage1SailingInterviewPage from "./pages/Stage1SailingInterviewPage";
 import Stage1PersonalityInterviewPage from "./pages/Stage1PersonalityInterviewPage";
 import RecruitmentRosterPage from "./pages/RecruitmentRosterPage"; 
+import Stage2InterviewPage from "./pages/Stage2InterviewPage";
+import Stage2NotesUploadPage from "./pages/Stage2NotesUploadPage";
+
+
+
 function AppHome() {
   const { role, positions, loading } = useUserRole();
 
@@ -43,6 +48,10 @@ export default function App() {
         <Route path="/member/recruitment/stage1/personality/:uid" element={<Stage1PersonalityInterviewPage />} />
 
         <Route path="/member/recruitment/roster" element = {<RecruitmentRosterPage />} />
+
+        <Route path="/member/recruitment/stage2/interview/:uid" element={<Stage2InterviewPage />} />
+
+        <Route path="/member/recruitment/stage2/notes" element={<Stage2NotesUploadPage />} />
 
       </Routes>
     </BrowserRouter>
