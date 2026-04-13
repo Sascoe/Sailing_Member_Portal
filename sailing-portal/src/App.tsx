@@ -11,6 +11,7 @@ import Stage1PersonalityInterviewPage from "./pages/Stage1PersonalityInterviewPa
 import RecruitmentRosterPage from "./pages/RecruitmentRosterPage"; 
 import Stage2InterviewPage from "./pages/Stage2InterviewPage";
 import Stage2NotesUploadPage from "./pages/Stage2NotesUploadPage";
+import Stage3PacketsPage from "./pages/Stage3PacketsPage";
 
 
 
@@ -38,7 +39,7 @@ export default function App() {
         <Route path="/member" element={<MemberHome />} />
         <Route path="/member/recruitment" element={<RecruitmentPage />} />
         <Route path="/member/recruitment/prospies" element={<ProspiesListPage />} />
-        
+        <Route path="/member/recruitment/stage3/packets" element={<Stage3PacketsPage />} />
         <Route path="/chair" element={<div className="p-6">Chair Home</div>} />
 
         <Route path="*" element={<Navigate to="/app" replace />} />
@@ -52,6 +53,8 @@ export default function App() {
         <Route path="/member/recruitment/stage2/interview/:uid" element={<Stage2InterviewPage />} />
 
         <Route path="/member/recruitment/stage2/notes" element={<Stage2NotesUploadPage />} />
+
+        <Route path="/member/recruitment/stage3/packets" element={<Stage3PacketsPage />} />
 
       </Routes>
     </BrowserRouter>

@@ -534,6 +534,16 @@ export default function RecruitmentPage() {
                 >
                   Roster / Decisioning
                 </button>
+
+                {activeStage === "stage3" && (
+
+                <button
+                  onClick={() => navigate("/member/recruitment/stage3/packets")}
+                  className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white"
+                >
+                  Open Stage 3 Packets
+                </button>
+              )}
               </>
             )}
 
