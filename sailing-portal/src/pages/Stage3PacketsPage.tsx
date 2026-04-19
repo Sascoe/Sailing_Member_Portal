@@ -322,7 +322,7 @@ function PacketCard({
                 />
                 <button
                   onClick={() => onBlurbSave(row.id, draftBlurb)}
-                  className="rounded-lg bg-black px-3 py-2 text-sm font-semibold text-white"
+                  className="rounded-lg bg-purple-600 hover:bg-purple-700 px-3 py-2 text-sm font-semibold text-white"
                 >
                   Save blurb
                 </button>
@@ -344,7 +344,7 @@ function PacketCard({
               />
               <button
                 onClick={() => onPacketNotesSave(row.id, draftPacketNotes)}
-                className="rounded-lg bg-black px-3 py-2 text-sm font-semibold text-white"
+                className="rounded-lg bg-purple-600 hover:bg-purple-700 px-3 py-2 text-sm font-semibold text-white"
               >
                 Save packet notes
               </button>
@@ -615,11 +615,11 @@ export default function Stage3PacketsPage() {
     return (
       <div className="mx-auto max-w-4xl p-6">
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h1 className="text-2xl font-semibold text-slate-900">Stage 3 packets</h1>
+          <h1 className="text-2xl font-bold text-center text-purple-600">Stage 3 packets</h1>
           <p className="mt-2 text-slate-600">This page is only active when recruitment is in Stage 3.</p>
           <button
             onClick={() => navigate("/member/recruitment")}
-            className="mt-4 rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white"
+            className="mt-4 rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white"
           >
             Back to recruitment
           </button>
@@ -633,7 +633,7 @@ export default function Stage3PacketsPage() {
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold text-slate-900">Stage 3 packets</h1>
+            <h1 className="text-2xl font-bold text-center text-purple-600">Stage 3 packets</h1>
             <p className="mt-2 text-slate-600">
               Chairs can build and publish packets. Members can vote once packets are published.
             </p>
@@ -665,7 +665,7 @@ export default function Stage3PacketsPage() {
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => publishPackets("men", !menPublished)}
-                className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white"
+                className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white"
               >
                 {menPublished ? "Unpublish men packet" : "Publish men packet"}
               </button>
@@ -693,7 +693,7 @@ export default function Stage3PacketsPage() {
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => publishPackets("women", !womenPublished)}
-                className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white"
+                className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white"
               >
                 {womenPublished ? "Unpublish women packet" : "Publish women packet"}
               </button>
@@ -779,7 +779,7 @@ export default function Stage3PacketsPage() {
           <button
             onClick={submitVotes}
             disabled={savingVote}
-            className="rounded-xl bg-black px-5 py-3 text-sm font-semibold text-white shadow-lg disabled:opacity-50"
+            className="rounded-xl bg-purple-600 hover:bg-purple-700 px-5 py-3 text-sm font-semibold text-white shadow-lg disabled:opacity-50"
           >
             {savingVote ? "Submitting…" : "Submit votes"}
           </button>

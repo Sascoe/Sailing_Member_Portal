@@ -124,12 +124,12 @@ export default function ChairPacketCreationPage() {
       <div className="mx-auto max-w-4xl space-y-6">
         <div className="rounded-2xl bg-white p-6 shadow">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-slate-900">
+            <h1 className="text-2xl font-bold text-center text-purple-600">
               Stage 3 — Create Candidate Packets
             </h1>
             <button
               onClick={() => navigate("/member/recruitment")}
-              className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white"
+              className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white"
             >
               Back to Recruitment
             </button>
@@ -171,7 +171,7 @@ export default function ChairPacketCreationPage() {
                       <button
                         onClick={() => publishPacketsForGender(gender as "male" | "female")}
                         disabled={remaining.length === 0 || publishing}
-                        className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                        className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                       >
                         {publishing ? "Publishing…" : `Publish ${gender} packets`}
                       </button>

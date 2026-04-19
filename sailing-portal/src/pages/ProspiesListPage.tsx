@@ -64,7 +64,7 @@ export default function ProspiesListPage() {
           </p>
           <button
             onClick={() => navigate("/member/recruitment")}
-            className="mt-4 rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white"
+            className="mt-4 rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white"
           >
             Back to recruitment
           </button>

@@ -22,13 +22,13 @@ export default function MemberHome() {
   }, []);
 
   return (
-    <div className="min-h-screen p-6">
+    <div className="min-h-screen p-6 bg-white">
       <div className="mx-auto max-w-3xl space-y-6">
-        <h1 className="text-2xl font-bold">Member Home</h1>
+        <h1 className="text-2xl font-bold text-center text-purple-600">Member Home</h1>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-2xl bg-white p-5 shadow">
-            <div className="text-lg font-semibold">Recruitment</div>
+          <div className="rounded-2xl bg-white p-5 shadow-lg border border-slate-200">
+            <div className="text-lg font-semibold text-purple-700">Recruitment</div>
             <div className="mt-1 text-sm text-slate-600">
               Queue, interviews, notes, and packets.
             </div>
@@ -38,7 +38,7 @@ export default function MemberHome() {
             ) : recruitmentEnabled ? (
               <Link
                 to="/member/recruitment"
-                className="mt-4 inline-block rounded-lg bg-black px-4 py-2 font-semibold text-white"
+                className="mt-4 inline-block rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 font-semibold text-white"
               >
                 Open
               </Link>
@@ -52,8 +52,8 @@ export default function MemberHome() {
             )}
           </div>
 
-          <div className="rounded-2xl bg-white p-5 shadow">
-            <div className="text-lg font-semibold">Team</div>
+          <div className="rounded-2xl bg-white p-5 shadow-lg border border-slate-200">
+            <div className="text-lg font-semibold text-purple-700">Team</div>
             <div className="mt-1 text-sm text-slate-600">
               Rosters, practice schedule, attendance (later).
             </div>

@@ -65,9 +65,9 @@ function QueueTable({
   claimingUid: string | null;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-lg">
+      <div className="flex items-center justify-center">
+        <h2 className="text-lg font-semibold text-purple-600">{title}</h2>
       </div>
 
       {error && (
@@ -77,33 +77,33 @@ function QueueTable({
       )}
 
       {loading ? (
-        <div className="mt-3 text-slate-600">Loading…</div>
+        <div className="mt-3 text-center text-slate-600">Loading…</div>
       ) : rows.length === 0 ? (
-        <div className="mt-3 rounded-lg bg-slate-50 p-3 text-slate-700">
+        <div className="mt-3 rounded-lg bg-blue-50 p-3 text-center text-blue-800">
           No one is waiting right now.
         </div>
       ) : (
         <div className="mt-3 overflow-x-auto">
           <table className="w-full border-collapse text-left text-sm text-slate-900">
             <thead>
-              <tr className="border-b">
-                <th className="py-2 pr-4">Name</th>
-                <th className="py-2 pr-4">Email</th>
-                <th className="py-2 pr-4">Status</th>
+              <tr className="border-b border-slate-300">
+                <th className="py-2 pr-4 text-purple-700">Name</th>
+                <th className="py-2 pr-4 text-purple-700">Email</th>
+                <th className="py-2 pr-4 text-purple-700">Status</th>
                 <th className="py-2 pr-4"></th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.uid} className="border-b">
+                <tr key={r.uid} className="border-b border-slate-200">
                   <td className="py-2 pr-4">{r.name ?? "—"}</td>
                   <td className="py-2 pr-4">{r.email ?? "—"}</td>
                   <td className="py-2 pr-4">{r.status ?? "waiting"}</td>
-                  <td className="py-2 pr-0 text-right">
+                  <td className="py-2 pr-0 text-center">
                     <button
                       onClick={() => onClaim(r.uid)}
                       disabled={claimingUid === r.uid}
-                      className="rounded-lg bg-black px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                      className="rounded-lg bg-purple-600 hover:bg-purple-700 px-3 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50"
                     >
                       {claimingUid === r.uid ? "Claiming…" : "Claim"}
                     </button>
@@ -132,11 +132,11 @@ function Stage2SlotColumn({
   onInterview: (uid: string) => void;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-lg">
+      <h2 className="text-lg font-semibold text-center text-purple-600">{title}</h2>
 
       {rows.length === 0 ? (
-        <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
+        <div className="mt-3 rounded-lg bg-blue-50 p-3 text-center text-sm text-blue-800">
           No assigned prospies.
         </div>
       ) : (
@@ -147,30 +147,32 @@ function Stage2SlotColumn({
             return (
               <div
                 key={r.uid}
-                className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+                className="rounded-lg border border-slate-200 bg-blue-50 p-3 shadow"
               >
-                <div className="font-semibold text-slate-900">{r.name}</div>
-                <div className="text-sm text-slate-600">{r.email ?? "—"}</div>
+                <div className="text-center font-semibold text-slate-900">{r.name}</div>
+                <div className="text-center text-sm text-slate-600">{r.email ?? "—"}</div>
 
                 <div className="mt-3 space-y-2">
-                  <label className="flex items-center gap-2 text-sm text-slate-800">
+                  <label className="flex items-center justify-center gap-2 text-sm text-slate-800">
                     <input
                       type="checkbox"
                       checked={r.checkedIn}
                       onChange={(e) =>
                         onToggleCheckedIn(r.uid, e.target.checked)
                       }
+                      className="text-purple-600"
                     />
                     <span>Checked in</span>
                   </label>
 
-                  <label className="flex items-center gap-2 text-sm text-slate-800">
+                  <label className="flex items-center justify-center gap-2 text-sm text-slate-800">
                     <input
                       type="checkbox"
                       checked={r.onTheWaterComplete}
                       onChange={(e) =>
                         onToggleOnTheWater(r.uid, e.target.checked)
                       }
+                      className="text-purple-600"
                     />
                     <span>On-the-water complete</span>
                   </label>
@@ -179,7 +181,7 @@ function Stage2SlotColumn({
                 <button
                   onClick={() => onInterview(r.uid)}
                   disabled={!canInterview}
-                  className="mt-3 w-full rounded-lg bg-black px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  className="mt-3 w-full rounded-lg bg-purple-600 hover:bg-purple-700 px-3 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50"
                 >
                   Interview
                 </button>
@@ -477,10 +479,10 @@ export default function RecruitmentPage() {
 
   if (settingsError) {
     return (
-      <div className="min-h-screen p-6">
-        <div className="mx-auto max-w-2xl rounded-2xl bg-white p-6 shadow">
-          <h1 className="text-xl font-semibold text-red-600">Settings error</h1>
-          <p className="mt-2 text-slate-700">{settingsError}</p>
+      <div className="min-h-screen p-6 bg-white">
+        <div className="mx-auto max-w-2xl rounded-2xl bg-white p-6 shadow-lg border border-slate-200">
+          <h1 className="text-xl font-semibold text-center text-red-600">Settings error</h1>
+          <p className="mt-2 text-center text-slate-700">{settingsError}</p>
         </div>
       </div>
     );
@@ -488,10 +490,10 @@ export default function RecruitmentPage() {
 
   if (!isOpen) {
     return (
-      <div className="min-h-screen p-6">
-        <div className="mx-auto max-w-2xl rounded-2xl bg-white p-6 shadow">
-          <h1 className="text-2xl font-bold text-slate-900">Recruitment</h1>
-          <p className="mt-2 text-slate-700">
+      <div className="min-h-screen p-6 bg-white">
+        <div className="mx-auto max-w-2xl rounded-2xl bg-white p-6 shadow-lg border border-slate-200">
+          <h1 className="text-2xl font-bold text-center text-purple-600">Recruitment</h1>
+          <p className="mt-2 text-center text-slate-700">
             Recruitment is currently closed.
           </p>
         </div>
@@ -500,61 +502,59 @@ export default function RecruitmentPage() {
   }
 
   return (
-  <div className="min-h-screen p-6">
+  <div className="min-h-screen p-6 bg-white">
     <div className="mx-auto max-w-7xl space-y-6">
-      <div className="rounded-2xl bg-white p-6 shadow">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Recruitment</h1>
+      <div className="rounded-2xl bg-white p-6 shadow-lg border border-slate-200">
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-purple-600">Recruitment</h1>
             <p className="mt-1 text-slate-700">
-              Active stage: <span className="font-semibold">{activeStage}</span>
+              Active stage: <span className="font-semibold text-blue-600">{activeStage}</span>
             </p>
           </div>
+        </div>
 
-          <div className="flex flex-wrap gap-3">
-            {isChair && (
-              <>
-                <button
-                  onClick={() => navigate("/member/recruitment/prospies")}
-                  className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white"
-                >
-                  See prospies
-                </button>
+        <div className="mt-4 flex flex-wrap justify-center gap-3">
+          {isChair && (
+            <>
+              <button
+                onClick={() => navigate("/member/recruitment/prospies")}
+                className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700"
+              >
+                See prospies
+              </button>
 
-                <button
-                  onClick={advanceStage}
-                  className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white"
-                >
-                  Advance stage → {nextStage}
-                </button>
+              <button
+                onClick={advanceStage}
+                className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700"
+              >
+                Advance stage → {nextStage}
+              </button>
 
-                <button
-                  className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white"
-                  onClick={() => navigate("/member/recruitment/roster")}
-                >
-                  Roster / Decisioning
-                </button>
+              <button
+                className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700"
+                onClick={() => navigate("/member/recruitment/roster")}
+              >
+                Roster / Decisioning
+              </button>
 
-                {activeStage === "stage3" && (
-
+              {activeStage === "stage3" && (
                 <button
                   onClick={() => navigate("/member/recruitment/stage3/packets")}
-                  className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white"
+                  className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700"
                 >
                   Open Stage 3 Packets
                 </button>
               )}
-              </>
-            )}
+            </>
+          )}
 
-            <button
-              onClick={() => navigate("/member/recruitment/stage2/notes")}
-              className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white"
-            >
-              Upload on-the-water notes
-            </button>
-          </div>
-
+          <button
+            onClick={() => navigate("/member/recruitment/stage2/notes")}
+            className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600"
+          >
+            Upload on-the-water notes
+          </button>
         </div>
       </div>
 
@@ -589,7 +589,7 @@ export default function RecruitmentPage() {
           )}
 
           {stage2Loading ? (
-            <div className="rounded-2xl bg-white p-6 shadow text-slate-700">
+            <div className="rounded-2xl bg-white p-6 shadow-lg text-center text-slate-700">
               Loading Stage 2…
             </div>
           ) : (

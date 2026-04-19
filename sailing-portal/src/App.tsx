@@ -8,10 +8,13 @@ import { useUserRole } from "./auth/useUserRole";
 import ProspiesListPage from "./pages/ProspiesListPage";
 import Stage1SailingInterviewPage from "./pages/Stage1SailingInterviewPage";
 import Stage1PersonalityInterviewPage from "./pages/Stage1PersonalityInterviewPage";
-import RecruitmentRosterPage from "./pages/RecruitmentRosterPage"; 
+import RecruitmentRosterPage from "./pages/RecruitmentRosterPage";
 import Stage2InterviewPage from "./pages/Stage2InterviewPage";
 import Stage2NotesUploadPage from "./pages/Stage2NotesUploadPage";
 import Stage3PacketsPage from "./pages/Stage3PacketsPage";
+import ChairPacketBuildingPage from "./pages/ChairPacketBuildingPage";
+import Stage3VotingResultsPage from "./pages/Stage3VotingResultsPage";
+import DevSeedPage from "./pages/DevSeedPage";
 
 
 
@@ -40,6 +43,9 @@ export default function App() {
         <Route path="/member/recruitment" element={<RecruitmentPage />} />
         <Route path="/member/recruitment/prospies" element={<ProspiesListPage />} />
         <Route path="/member/recruitment/stage3/packets" element={<Stage3PacketsPage />} />
+        <Route path="/member/recruitment/stage3/build" element={<ChairPacketBuildingPage />} />
+        <Route path="/member/recruitment/stage3/results" element={<Stage3VotingResultsPage />} />
+        <Route path="/dev/seed" element={<DevSeedPage />} />
         <Route path="/chair" element={<div className="p-6">Chair Home</div>} />
 
         <Route path="*" element={<Navigate to="/app" replace />} />

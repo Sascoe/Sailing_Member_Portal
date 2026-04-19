@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { type FormEvent, useState } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { auth, db } from "../app/firebase";
@@ -114,12 +114,12 @@ export default function SignupPage() {
 
 
 return (
-  <div className="min-h-screen flex items-center justify-center p-6">
+  <div className="min-h-screen flex items-center justify-center p-6 bg-white">
     <form
       onSubmit={onSubmit}
-      className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6 text-slate-900 shadow"
+      className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6 text-slate-900 shadow-lg border border-slate-200"
     >
-      <h1 className="text-2xl font-bold">Create account</h1>
+      <h1 className="text-2xl font-bold text-center text-purple-600">Create account</h1>
 
       {/* First + Last name */}
       <div className="grid grid-cols-2 gap-3">
@@ -229,7 +229,7 @@ return (
       )}
 
       <button
-        className="w-full rounded-lg bg-black px-4 py-2 font-semibold text-white disabled:opacity-50"
+        className="w-full rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 font-semibold text-white hover:bg-purple-700 disabled:opacity-50"
         disabled={loading}
       >
         {loading ? "Creating..." : "Sign up"}

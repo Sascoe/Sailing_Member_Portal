@@ -361,7 +361,7 @@ export default function RecruitmentRosterPage() {
     <div className="min-h-screen p-6">
       <div className="mx-auto max-w-6xl rounded-2xl bg-white p-6 shadow">
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold text-slate-900">
+          <h1 className="text-2xl font-bold text-center text-purple-600">
             Stage 1 Completed Prospies
           </h1>
 
@@ -388,7 +388,7 @@ export default function RecruitmentRosterPage() {
               type="button"
               onClick={handleAssignStage2Slots}
               disabled={assigningSlots || finalizingStage1}
-              className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
             >
               {assigningSlots ? "Assigning…" : "Assign Stage 2 Slots"}
             </button>
@@ -560,7 +560,7 @@ export default function RecruitmentRosterPage() {
               type="button"
               onClick={() => setDecisionForSelected("advance")}
               disabled={selected.size === 0}
-              className="rounded-lg bg-black px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="rounded-lg bg-purple-600 hover:bg-purple-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
             >
               Mark Advance
             </button>
@@ -569,7 +569,7 @@ export default function RecruitmentRosterPage() {
               type="button"
               onClick={() => setDecisionForSelected("drop")}
               disabled={selected.size === 0}
-              className="rounded-lg bg-black px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="rounded-lg bg-purple-600 hover:bg-purple-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
             >
               Mark Drop
             </button>
@@ -578,7 +578,7 @@ export default function RecruitmentRosterPage() {
               type="button"
               onClick={() => setDecisionForSelected("undecided")}
               disabled={selected.size === 0}
-              className="rounded-lg bg-black px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="rounded-lg bg-purple-600 hover:bg-purple-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
             >
               Clear Bucket
             </button>

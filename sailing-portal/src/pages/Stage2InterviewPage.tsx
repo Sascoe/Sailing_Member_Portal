@@ -153,7 +153,7 @@ export default function Stage2InterviewPage() {
           </p>
           <button
             onClick={() => navigate("/member/recruitment")}
-            className="mt-4 rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white"
+            className="mt-4 rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white"
           >
             Back to recruitment
           </button>
@@ -169,7 +169,7 @@ export default function Stage2InterviewPage() {
     <div className="min-h-screen p-6">
       <div className="mx-auto max-w-3xl space-y-6 rounded-2xl bg-white p-6 shadow">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">
+          <h1 className="text-2xl font-bold text-center text-purple-600">
             Stage 2 — Interview
           </h1>
           <p className="mt-1 text-slate-700">
@@ -195,7 +195,7 @@ export default function Stage2InterviewPage() {
               target="_blank"
               rel="noreferrer"
               className={`inline-block rounded-lg px-4 py-2 text-sm font-semibold text-white ${
-                formUrl ? "bg-black" : "bg-slate-300 cursor-not-allowed"
+                formUrl ? "bg-purple-600 hover:bg-purple-700" : "bg-slate-300 cursor-not-allowed"
               }`}
               onClick={(e) => {
                 if (!formUrl) e.preventDefault();
@@ -277,7 +277,7 @@ export default function Stage2InterviewPage() {
           <button
             onClick={onComplete}
             disabled={submitting}
-            className="w-full rounded-lg bg-black px-4 py-2 font-semibold text-white disabled:opacity-50"
+            className="w-full rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 font-semibold text-white disabled:opacity-50"
           >
             {submitting ? "Completing…" : "Complete Stage 2 Interview"}
           </button>

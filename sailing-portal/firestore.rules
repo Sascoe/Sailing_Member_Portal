@@ -25,58 +25,37 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(uid)).data;
     }
 
-    function hasPosition(pos) {
-      return signedIn()
-        && (userDoc(myUid()).positions != null)
-        && userDoc(myUid()).positions.hasAny([pos]);
-    }
-
     function myRole() {
       return signedIn() ? userDoc(myUid()).role : null;
     }
 
     function isChair() {
-      return hasPosition("recruitment_chair");
+      return signedIn()
+        && userDoc(myUid()).positions != null
+        && userDoc(myUid()).positions.hasAny(["recruitment_chair"]);
     }
 
     function isMember() {
       return myRole() == "member";
     }
 
-    function packetsReleased() {
-      return exists(/databases/$(database)/documents/settings/global)
-        && get(/databases/$(database)/documents/settings/global).data.packetsReleased == true;
-    }
-
     function memberCanAccessProspie(prospieUid) {
-      return packetsReleased()
-        || (
-          isMember()
-          && exists(/databases/$(database)/documents/stage1Queue/$(prospieUid))
-          && get(/databases/$(database)/documents/stage1Queue/$(prospieUid)).data.claimedBy == myUid()
-          && get(/databases/$(database)/documents/stage1Queue/$(prospieUid)).data.state == "claimed"
-        );
+      return isMember()
+        && exists(/databases/$(database)/documents/stage1Queue/$(prospieUid))
+        && get(/databases/$(database)/documents/stage1Queue/$(prospieUid)).data.claimedBy == myUid()
+        && get(/databases/$(database)/documents/stage1Queue/$(prospieUid)).data.state == "claimed";
     }
-
-    function isRecruitmentChair() {
-      return signedIn()
-      && userDoc(request.auth.uid).positions.hasAny(["recruitment_chair"]);
-    }
-
-    
 
     // ---------- Users ----------
     match /users/{uid} {
       allow read: if signedIn() && (uid == myUid() || isChair());
 
-      // NU users can create their own user doc, but only as role="prospie"
       allow create: if signedIn()
         && uid == myUid()
         && isNUEmail()
         && request.resource.data.role == "prospie"
         && request.resource.data.email == myEmail();
 
-      // User can update their own non-role fields; chair can update anything (including role)
       allow update: if signedIn() && (
         isChair()
         || (
@@ -92,16 +71,7 @@ service cloud.firestore {
     // ---------- Settings ----------
     match /settings/{docId} {
       allow read: if signedIn();
-      allow write: if isChair();
-    }
-    match /settings/{docId} {
-      allow read: if signedIn(); // members can read which stage is active
-
-    // Only recruitment chairs can update settings/global
-      allow update: if docId == "global" && isChair();
-
-    // Usually you don't want members creating/deleting settings docs
-      allow create, delete: if false;
+      allow create, update, delete: if isChair();
     }
 
     // ---------- Prospies ----------
@@ -110,84 +80,17 @@ service cloud.firestore {
         || (signedIn() && prospieUid == myUid())
         || memberCanAccessProspie(prospieUid);
 
-      allow create: if signedIn()
-        && prospieUid == myUid()
-        && isNUEmail()
-        && myRole() == "prospie";
+      allow create: if isChair()
+        || (signedIn()
+          && prospieUid == myUid()
+          && isNUEmail()
+          && myRole() == "prospie");
 
       allow update: if isChair()
         || (signedIn() && prospieUid == myUid() && myRole() == "prospie");
 
       allow delete: if isChair();
     }
-
-    match /prospies/{prospieId} {
-      allow read: if hasPosition("recruitment_chair");
-    }
-
-    match /prospies/{prospieId} {
-      allow create, read, update: if signedIn() && request.auth.uid == prospieId;
-      allow delete: if false;
-    }
-
-    match /prospies/{prospieId} {
-      // Chair can read all prospies
-      allow read: if isRecruitmentChair();
-
-      // Prospie can read/write their own doc
-      allow create, read, update: if signedIn() && request.auth.uid == prospieId;
-
-      allow delete: if false;
-    }
-
-    allow update: if isChair()
-      && request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly(["stage1Decision","stage1DecisionUpdatedAt","stage1DecisionUpdatedBy"]);
-
-
-// ---------- Stage 1 Sailing Queue ----------
-match /stage1SailingQueue/{prospieUid} {
-  allow read: if isChair() || isMember() || (signedIn() && prospieUid == myUid());
-
-  // Prospie can check in to sailing queue
-  allow create: if signedIn()
-    && prospieUid == myUid()
-    && myRole() == "prospie"
-    && isNUEmail()
-    && request.resource.data.status == "waiting";
-
-  // Prospie can leave queue; chair can also delete
-  allow delete: if isChair() || (signedIn() && prospieUid == myUid());
-
-  // Member claim waiting -> claimed; chairs can update
-  allow update: if isChair()
-    || (isMember()
-      && resource.data.status == "waiting"
-      && request.resource.data.status == "claimed"
-      && request.resource.data.claimedBy == myUid()
-    );
-}
-
-// ---------- Stage 1 Personality Queue ----------
-match /stage1PersonalityQueue/{prospieUid} {
-  allow read: if isChair() || isMember() || (signedIn() && prospieUid == myUid());
-
-  // Only members/chairs can create personality queue entries
-  // (these get created when sailing interview is completed)
-  allow create: if isChair() || isMember();
-
-  allow delete: if isChair(); // usually only chairs (or your completion transaction) should remove
-
-  allow update: if isChair()
-    || (isMember()
-      && resource.data.status == "waiting"
-      && request.resource.data.status == "claimed"
-      && request.resource.data.claimedBy == myUid()
-    );
-}
-
-
-
 
     // ---------- Interviews ----------
     match /prospies/{prospieUid}/interviews/{interviewId} {
@@ -205,10 +108,50 @@ match /stage1PersonalityQueue/{prospieUid} {
       allow update, delete: if isChair();
     }
 
+    // ---------- Stage 1 Sailing Queue ----------
+    match /stage1SailingQueue/{prospieUid} {
+      allow read: if isChair() || isMember() || (signedIn() && prospieUid == myUid());
+
+      allow create: if signedIn()
+        && prospieUid == myUid()
+        && myRole() == "prospie"
+        && isNUEmail()
+        && request.resource.data.status == "waiting";
+
+      allow delete: if isChair() || (signedIn() && prospieUid == myUid());
+
+      allow update: if isChair()
+        || (isMember()
+          && resource.data.status == "waiting"
+          && request.resource.data.status == "claimed"
+          && request.resource.data.claimedBy == myUid()
+        );
+    }
+
+    // ---------- Stage 1 Personality Queue ----------
+    match /stage1PersonalityQueue/{prospieUid} {
+      allow read: if isChair() || isMember() || (signedIn() && prospieUid == myUid());
+      allow create: if isChair() || isMember();
+      allow delete: if isChair();
+
+      allow update: if isChair()
+        || (isMember()
+          && resource.data.status == "waiting"
+          && request.resource.data.status == "claimed"
+          && request.resource.data.claimedBy == myUid()
+        );
+    }
+
+    // ---------- Stage 3 Votes ----------
+    match /stage3Votes/{voterUid} {
+      allow read: if isChair() || (signedIn() && voterUid == myUid());
+      allow create, update: if signedIn() && (voterUid == myUid() || isChair());
+      allow delete: if isChair();
+    }
+
     // ---------- Default deny ----------
     match /{document=**} {
       allow read, write: if false;
     }
   }
 }
-

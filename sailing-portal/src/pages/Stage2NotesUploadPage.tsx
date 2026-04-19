@@ -126,7 +126,7 @@ export default function Stage2NotesUploadPage() {
       <div className="mx-auto max-w-4xl space-y-6 rounded-2xl bg-white p-6 shadow">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">
+            <h1 className="text-2xl font-bold text-center text-purple-600">
               Upload On-the-Water Notes
             </h1>
             <p className="mt-1 text-slate-700">
@@ -136,7 +136,7 @@ export default function Stage2NotesUploadPage() {
 
           <button
             onClick={() => navigate("/member/recruitment")}
-            className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white"
+            className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white"
           >
             Back to recruitment
           </button>
@@ -178,7 +178,7 @@ export default function Stage2NotesUploadPage() {
                       {r.email ?? "—"}
                     </td>
                     <td className="py-3 pr-4">
-                      <label className="inline-flex cursor-pointer items-center rounded-lg bg-black px-3 py-2 text-sm font-semibold text-white">
+                      <label className="inline-flex cursor-pointer items-center rounded-lg bg-purple-600 hover:bg-purple-700 px-3 py-2 text-sm font-semibold text-white">
                         {uploadingUid === r.uid ? "Uploading…" : "Upload voice memo"}
                         <input
                           type="file"

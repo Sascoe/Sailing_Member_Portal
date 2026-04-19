@@ -79,7 +79,7 @@ export default function ProspieHome() {
   return (
     <div className="min-h-screen p-6">
       <div className="mx-auto max-w-xl space-y-4 rounded-2xl bg-white p-6 shadow">
-        <h1 className="text-2xl font-bold text-slate-900">Prospie Home</h1>
+        <h1 className="text-2xl font-bold text-center text-purple-600">Prospie Home</h1>
 
         {error && (
           <div className="rounded-lg bg-red-50 p-2 text-sm text-red-700">
@@ -90,7 +90,7 @@ export default function ProspieHome() {
         {queueStatus === null && (
           <button
             onClick={checkIn}
-            className="w-full rounded-lg bg-black px-4 py-2 font-semibold text-white"
+            className="w-full rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 font-semibold text-white"
           >
             Check in for Stage 1 (Sailing)
           </button>
