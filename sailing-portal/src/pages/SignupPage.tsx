@@ -1,9 +1,10 @@
 import { type FormEvent, useState } from "react";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { auth, db } from "../app/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { storage } from "../app/firebase";
+import { useNavigate } from "react-router-dom";
 import type {User} from "firebase/auth";
 
 function isNorthwesternU(email: string) {
@@ -11,6 +12,7 @@ function isNorthwesternU(email: string) {
 }
 
 export default function SignupPage() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -91,7 +93,8 @@ export default function SignupPage() {
       profileComplete: true,
     });
 
-    // Optional: navigate("/prospie");
+    await signOut(auth);
+    navigate("/login", { state: { signedUp: true } });
   } catch (err: any) {
     console.error(err);
 

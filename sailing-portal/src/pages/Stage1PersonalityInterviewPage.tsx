@@ -152,6 +152,7 @@ export default function Stage1PersonalityInterviewPage() {
             tx.delete(queueRef);
             });
 
+            navigate("/member/recruitment");
         } catch (e: any) {
             console.error(e);
             setSubmitError(e?.message ?? "Failed to complete interview");

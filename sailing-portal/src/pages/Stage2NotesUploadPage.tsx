@@ -3,8 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { auth, db, storage } from "../app/firebase";
 import {
   collection,
+  doc,
   onSnapshot,
   query,
+  updateDoc,
   where,
 } from "firebase/firestore";
 import {
@@ -13,10 +15,13 @@ import {
   getDownloadURL,
 } from "firebase/storage";
 
+type YesMaybeNo = "yes" | "maybe" | "no";
+
 type Stage2NotesRow = {
   uid: string;
   name: string;
   email?: string;
+  onTheWaterEval?: YesMaybeNo;
 };
 
 export default function Stage2NotesUploadPage() {
@@ -28,6 +33,7 @@ export default function Stage2NotesUploadPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [uploadingUid, setUploadingUid] = useState<string | null>(null);
+  const [savingEvalUid, setSavingEvalUid] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -58,6 +64,7 @@ export default function Stage2NotesUploadPage() {
               uid: d.id,
               name,
               email: data.email,
+              onTheWaterEval: data.stage2?.onTheWaterEval ?? undefined,
             };
           })
           .filter((r): r is Stage2NotesRow => r !== null);
@@ -76,10 +83,20 @@ export default function Stage2NotesUploadPage() {
     return () => unsub();
   }, []);
 
-  async function handleFileSelected(
-    uid: string,
-    file: File | null
-  ) {
+  async function handleEvalChange(uid: string, value: YesMaybeNo) {
+    setSavingEvalUid(uid);
+    try {
+      await updateDoc(doc(db, "prospies", uid), {
+        "stage2.onTheWaterEval": value,
+      });
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to save evaluation.");
+    } finally {
+      setSavingEvalUid(null);
+    }
+  }
+
+  async function handleFileSelected(uid: string, file: File | null) {
     if (!file) return;
     if (!myUid) {
       setError("You must be signed in to upload notes.");
@@ -103,14 +120,7 @@ export default function Stage2NotesUploadPage() {
         contentType: file.type || "audio/mpeg",
       });
 
-      const downloadUrl = await getDownloadURL(storageRef);
-
-      console.log("Uploaded stage2 note:", {
-        prospieUid: uid,
-        uploadedBy: myUid,
-        filename: file.name,
-        downloadUrl,
-      });
+      await getDownloadURL(storageRef);
 
       setSuccessMessage("Voice memo uploaded successfully.");
     } catch (e: any) {
@@ -130,7 +140,7 @@ export default function Stage2NotesUploadPage() {
               Upload On-the-Water Notes
             </h1>
             <p className="mt-1 text-slate-700">
-              Upload a voice memo for each Stage 2 prospie.
+              Record your evaluation and upload a voice memo for each Stage 2 prospie.
             </p>
           </div>
 
@@ -164,18 +174,38 @@ export default function Stage2NotesUploadPage() {
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left text-sm text-slate-900">
               <thead>
-                <tr className="border-b">
-                  <th className="py-2 pr-4">Name</th>
-                  <th className="py-2 pr-4">Email</th>
-                  <th className="py-2 pr-4">Upload</th>
+                <tr className="border-b border-slate-200 bg-slate-50">
+                  <th className="py-3 pr-4 pl-2 font-semibold">Name</th>
+                  <th className="py-3 pr-4 font-semibold">Email</th>
+                  <th className="py-3 pr-4 font-semibold">On-the-water eval</th>
+                  <th className="py-3 pr-4 font-semibold">Voice memo</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.uid} className="border-b">
-                    <td className="py-3 pr-4 font-medium">{r.name}</td>
-                    <td className="py-3 pr-4 text-slate-600">
-                      {r.email ?? "—"}
+                  <tr key={r.uid} className="border-b border-slate-200 hover:bg-slate-50">
+                    <td className="py-3 pr-4 pl-2 font-medium">{r.name}</td>
+                    <td className="py-3 pr-4 text-slate-600">{r.email ?? "—"}</td>
+                    <td className="py-3 pr-4">
+                      <select
+                        value={r.onTheWaterEval ?? ""}
+                        disabled={savingEvalUid === r.uid}
+                        onChange={(e) =>
+                          handleEvalChange(r.uid, e.target.value as YesMaybeNo)
+                        }
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 disabled:opacity-50"
+                      >
+                        <option value="" disabled>Select…</option>
+                        <option value="yes">Yes</option>
+                        <option value="maybe">Maybe</option>
+                        <option value="no">No</option>
+                      </select>
+                      {savingEvalUid === r.uid && (
+                        <span className="ml-2 text-xs text-slate-500">Saving…</span>
+                      )}
+                      {r.onTheWaterEval && savingEvalUid !== r.uid && (
+                        <span className="ml-2 text-xs text-green-600">✓ Saved</span>
+                      )}
                     </td>
                     <td className="py-3 pr-4">
                       <label className="inline-flex cursor-pointer items-center rounded-lg bg-purple-600 hover:bg-purple-700 px-3 py-2 text-sm font-semibold text-white">

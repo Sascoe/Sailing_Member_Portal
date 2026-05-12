@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../app/firebase";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -9,6 +9,8 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const justSignedUp = (location.state as any)?.signedUp === true;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -32,6 +34,12 @@ export default function LoginPage() {
         className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-lg border border-slate-200"
       >
         <h1 className="text-2xl font-bold text-center text-purple-600">Log in</h1>
+
+        {justSignedUp && (
+          <div className="rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-700 text-center">
+            Account created successfully! Sign in to continue.
+          </div>
+        )}
 
         <label className="block">
           <div className="text-sm font-medium text-slate-700">Email</div>

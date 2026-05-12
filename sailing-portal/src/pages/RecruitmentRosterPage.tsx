@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   collection,
   onSnapshot,
@@ -7,6 +8,7 @@ import {
   doc,
   writeBatch,
   serverTimestamp,
+  updateDoc,
 } from "firebase/firestore";
 import { db, auth, functions } from "../app/firebase";
 import { useUserRole } from "../auth/useUserRole";
@@ -15,6 +17,20 @@ import { httpsCallable } from "firebase/functions";
 
 type YesMaybeNo = "yes" | "maybe" | "no";
 type Stage1Decision = "undecided" | "advance" | "drop";
+
+type Stage2Slot = "thu_2_4" | "thu_4_6" | "fri_2_4" | "fri_4_6";
+
+const SLOT_LABELS: Record<Stage2Slot, string> = {
+  thu_2_4: "Thu 2–4",
+  thu_4_6: "Thu 4–6",
+  fri_2_4: "Fri 2–4",
+  fri_4_6: "Fri 4–6",
+};
+
+function slotLabel(slot?: string): string | null {
+  if (!slot) return null;
+  return SLOT_LABELS[slot as Stage2Slot] ?? slot;
+}
 
 type ProspieDoc = {
   firstName?: string;
@@ -34,18 +50,18 @@ type ProspieDoc = {
   stage1PersonalityInterviewSummary?: {
     eval1?: YesMaybeNo;
     eval2?: YesMaybeNo;
-    completedAt?: any; // Firestore Timestamp
+    completedAt?: any;
   };
 
   stage1Complete?: boolean;
-
-  // Optional future-proof field if you ever store it top-level
   stage1CompletedAt?: any;
 
-  // bucket fields
   stage1Decision?: Stage1Decision;
   stage1DecisionUpdatedAt?: any;
   stage1DecisionUpdatedBy?: string | null;
+
+  stage2?: { slot?: string };
+  stage2Slot?: string;
 };
 
 function scoreYNM(v?: YesMaybeNo) {
@@ -85,6 +101,7 @@ function localDateKey(ms: number): string {
 }
 
 export default function RecruitmentRosterPage() {
+  const navigate = useNavigate();
   const { positions, loading: roleLoading } = useUserRole();
   const isRecruitmentChair = positions?.includes("recruitment_chair") ?? false;
 
@@ -173,7 +190,11 @@ export default function RecruitmentRosterPage() {
     try {
       const finalize = httpsCallable(functions, "finalizeStage1");
       const result: any = await finalize({});
+      await updateDoc(doc(db, "settings", "global"), {
+        "recruitment.activeStage": "stage2",
+      });
       alert(`Advanced: ${result.data.advanced}, Dropped: ${result.data.dropped}`);
+      navigate("/member/recruitment");
     } catch (e: any) {
       console.error(e);
       alert(e?.message ?? "Failed to finalize Stage 1.");
@@ -324,6 +345,16 @@ export default function RecruitmentRosterPage() {
     return c;
   }, [prospies]);
 
+  const advancingWithoutSlot = useMemo(
+    () =>
+      prospies.filter(({ data }) => {
+        const isAdvancing = data.stage1Decision === "advance";
+        const hasSlot = Boolean(data.stage2?.slot ?? data.stage2Slot);
+        return isAdvancing && !hasSlot;
+      }).length,
+    [prospies]
+  );
+
   const visibleIds = visibleRows.map((p) => p.id);
   const allVisibleSelected =
     visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
@@ -394,14 +425,21 @@ export default function RecruitmentRosterPage() {
             </button>
 
             {/* Finalize Stage 1 */}
-            <button
-              type="button"
-              onClick={handleFinalizeStage1}
-              disabled={finalizingStage1 || assigningSlots}
-              className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              {finalizingStage1 ? "Finalizing…" : "Finalize Stage 1"}
-            </button>
+            <div className="flex flex-col items-start gap-1">
+              <button
+                type="button"
+                onClick={handleFinalizeStage1}
+                disabled={finalizingStage1 || assigningSlots || advancingWithoutSlot > 0}
+                className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {finalizingStage1 ? "Finalizing…" : "Finalize Stage 1"}
+              </button>
+              {advancingWithoutSlot > 0 && (
+                <p className="text-xs text-amber-700">
+                  {advancingWithoutSlot} advancing prospie{advancingWithoutSlot !== 1 ? "s" : ""} missing a slot
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
@@ -599,6 +637,7 @@ export default function RecruitmentRosterPage() {
                 <th className="py-2 pr-4">Sailing exp</th>
                 <th className="py-2 pr-4">Availability</th>
                 <th className="py-2 pr-4">Score</th>
+                <th className="py-2 pr-4">Stage 2 slot</th>
                 <th className="py-2 pr-4">Bucket</th>
               </tr>
             </thead>
@@ -610,6 +649,7 @@ export default function RecruitmentRosterPage() {
                   data.stage1SailingInterviewSummary?.hasSailingExperience;
 
                 const bucket = data.stage1Decision ?? "undecided";
+                const slot = data.stage2?.slot ?? data.stage2Slot;
 
                 return (
                   <tr key={id} className="border-b align-top">
@@ -676,6 +716,18 @@ export default function RecruitmentRosterPage() {
                     </td>
 
                     <td className="py-2 pr-4">
+                      {slot ? (
+                        <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-semibold text-green-800">
+                          {slotLabel(slot)}
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
+                          Not assigned
+                        </span>
+                      )}
+                    </td>
+
+                    <td className="py-2 pr-4">
                       <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700">
                         {bucket}
                       </span>
@@ -685,7 +737,7 @@ export default function RecruitmentRosterPage() {
               })}
               {visibleRows.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="py-6 text-center text-slate-600">
+                  <td colSpan={11} className="py-6 text-center text-slate-600">
                     No prospies match the current filters.
                   </td>
                 </tr>

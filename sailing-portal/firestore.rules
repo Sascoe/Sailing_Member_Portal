@@ -78,7 +78,12 @@ service cloud.firestore {
     match /prospies/{prospieUid} {
       allow read: if isChair()
         || (signedIn() && prospieUid == myUid())
-        || memberCanAccessProspie(prospieUid);
+        || memberCanAccessProspie(prospieUid)
+        || (isMember()
+          && "stage3" in resource.data
+          && resource.data.stage3 != null
+          && "packetCategory" in resource.data.stage3
+          && resource.data.stage3.packetCategory != null);
 
       allow create: if isChair()
         || (signedIn()

@@ -5,6 +5,16 @@ import { doc, onSnapshot, runTransaction, serverTimestamp } from "firebase/fires
 
 type YesMaybeNo = "yes" | "maybe" | "no";
 
+const PRACTICE_DAYS = [
+  { key: "monday",    label: "Monday" },
+  { key: "tuesday",  label: "Tuesday" },
+  { key: "wednesday",label: "Wednesday" },
+  { key: "thursday", label: "Thursday" },
+  { key: "friday",   label: "Friday" },
+] as const;
+
+type PracticeDay = typeof PRACTICE_DAYS[number]["key"];
+
 type Stage2Doc = {
   firstName?: string;
   lastName?: string;
@@ -36,6 +46,13 @@ export default function Stage2InterviewPage() {
   const [eval2, setEval2] = useState<YesMaybeNo>("maybe");
   const [notes1, setNotes1] = useState("");
   const [notes2, setNotes2] = useState("");
+  const [practiceAvailability, setPracticeAvailability] = useState<PracticeDay[]>([]);
+
+  function toggleDay(day: PracticeDay) {
+    setPracticeAvailability((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
+    );
+  }
 
   // Load Stage 2 form URL from settings/global
   useEffect(() => {
@@ -124,6 +141,7 @@ export default function Stage2InterviewPage() {
             eval2,
             notes1,
             notes2,
+            practiceAvailability,
           },
           "stage2.interviewComplete": true,
           "stage2.interviewCompletedAt": serverTimestamp(),
@@ -219,7 +237,7 @@ export default function Stage2InterviewPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block">
               <div className="text-sm font-medium text-slate-700">
-                Evaluation 1
+                Interviewer 1
               </div>
               <select
                 value={eval1}
@@ -234,7 +252,7 @@ export default function Stage2InterviewPage() {
 
             <label className="block">
               <div className="text-sm font-medium text-slate-700">
-                Evaluation 2
+                Interviewer 2
               </div>
               <select
                 value={eval2}
@@ -246,6 +264,26 @@ export default function Stage2InterviewPage() {
                 <option value="no">No</option>
               </select>
             </label>
+          </div>
+
+          <div>
+            <div className="text-sm font-medium text-slate-700 mb-2">Practice availability</div>
+            <div className="grid gap-2 sm:grid-cols-5">
+              {PRACTICE_DAYS.map((day) => (
+                <label
+                  key={day.key}
+                  className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={practiceAvailability.includes(day.key)}
+                    onChange={() => toggleDay(day.key)}
+                    className="h-4 w-4"
+                  />
+                  <span className="text-sm text-slate-900">{day.label}</span>
+                </label>
+              ))}
+            </div>
           </div>
 
           <label className="block">

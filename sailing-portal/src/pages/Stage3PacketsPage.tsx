@@ -3,9 +3,11 @@ import {
   collection,
   doc,
   onSnapshot,
+  query,
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
   writeBatch,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
@@ -24,6 +26,8 @@ type RecruitmentSettings = {
     womenPacketsPublished?: boolean;
     menVotesAllowed?: number;
     womenVotesAllowed?: number;
+    menVotingOpen?: boolean;
+    womenVotingOpen?: boolean;
   };
 };
 
@@ -60,9 +64,11 @@ type ProspieDoc = {
     eval2?: YesMaybeNo;
     notes1?: string;
     notes2?: string;
+    practiceAvailability?: string[];
   };
   stage2?: {
     onTheWaterComplete?: boolean;
+    onTheWaterEval?: YesMaybeNo;
     interviewComplete?: boolean;
   };
   stage3?: {
@@ -93,7 +99,51 @@ type ProspieRow = {
   packetNotes: string;
   packetCategory: PacketCategory | null;
   finalDecision: FinalDecision;
+  totalScore: number;
+  hasSailingExperience: boolean;
+  practiceAvailability: string[];
 };
+
+const MAX_SCORE = 7;
+
+function evalScore(v?: YesMaybeNo): number {
+  if (v === "yes") return 1;
+  if (v === "maybe") return 0.5;
+  return 0;
+}
+
+function calcScore(data: ProspieDoc): number {
+  return (
+    evalScore(data.stage1SailingInterviewSummary?.sailingEval1) +
+    evalScore(data.stage1SailingInterviewSummary?.sailingEval2) +
+    evalScore(data.stage1PersonalityInterviewSummary?.eval1) +
+    evalScore(data.stage1PersonalityInterviewSummary?.eval2) +
+    evalScore(data.stage2?.onTheWaterEval) +
+    evalScore(data.stage2InterviewSummary?.eval1) +
+    evalScore(data.stage2InterviewSummary?.eval2)
+  );
+}
+
+function ScoreBadge({ score }: { score: number }) {
+  const pct = score / MAX_SCORE;
+  const color =
+    pct >= 0.75 ? "bg-green-100 text-green-800" :
+    pct >= 0.5  ? "bg-amber-100 text-amber-800" :
+                  "bg-red-100 text-red-800";
+  return (
+    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${color}`}>
+      {score}/{MAX_SCORE}
+    </span>
+  );
+}
+
+const PRACTICE_DAYS = [
+  { key: "monday",    label: "Mon" },
+  { key: "tuesday",  label: "Tue" },
+  { key: "wednesday",label: "Wed" },
+  { key: "thursday", label: "Thu" },
+  { key: "friday",   label: "Fri" },
+] as const;
 
 const CATEGORY_LABELS: Record<PacketCategory, string> = {
   auto_on: "Auto-ons",
@@ -161,13 +211,17 @@ function toRow(id: string, data: ProspieDoc): ProspieRow {
       { label: "Personality 2", value: scoreLabel(data.stage1PersonalityInterviewSummary?.eval2) },
     ],
     stage2Scores: [
-      { label: "On the water", value: scoreLabel(data.stage2InterviewSummary?.eval1) },
-      { label: "Stage 2 interview", value: scoreLabel(data.stage2InterviewSummary?.eval2) },
+      { label: "On the water", value: scoreLabel(data.stage2?.onTheWaterEval) },
+      { label: "Interview 1", value: scoreLabel(data.stage2InterviewSummary?.eval1) },
+      { label: "Interview 2", value: scoreLabel(data.stage2InterviewSummary?.eval2) },
     ],
     interviewBlurb: coalesceBlurb(data),
     packetNotes: data.stage3?.packetNotes ?? "",
     packetCategory: data.stage3?.packetCategory ?? null,
     finalDecision: data.stage3?.finalDecision ?? "undecided",
+    totalScore: calcScore(data),
+    hasSailingExperience: data.stage1SailingInterviewSummary?.hasSailingExperience ?? false,
+    practiceAvailability: data.stage2InterviewSummary?.practiceAvailability ?? [],
   };
 }
 
@@ -195,9 +249,6 @@ function PacketCard({
   const [draftBlurb, setDraftBlurb] = useState(row.interviewBlurb);
   const [draftPacketNotes, setDraftPacketNotes] = useState(row.packetNotes);
 
-  useEffect(() => setDraftBlurb(row.interviewBlurb), [row.interviewBlurb]);
-  useEffect(() => setDraftPacketNotes(row.packetNotes), [row.packetNotes]);
-
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-col gap-4 md:flex-row">
@@ -218,7 +269,18 @@ function PacketCard({
         <div className="min-w-0 flex-1 space-y-3">
           <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
             <div>
-              <h3 className="text-xl font-semibold text-slate-900">{row.name}</h3>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-xl font-semibold text-slate-900">{row.name}</h3>
+                <ScoreBadge score={row.totalScore} />
+                <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${row.hasSailingExperience ? "bg-blue-100 text-blue-800" : "bg-slate-100 text-slate-500"}`}>
+                  {row.hasSailingExperience ? "Sailing exp." : "No sailing exp."}
+                </span>
+                {isChair && (
+                  <span className="inline-block rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-800">
+                    {voteCount} {voteCount === 1 ? "vote" : "votes"}
+                  </span>
+                )}
+              </div>
               <p className="text-sm text-slate-600">
                 Grad year: {row.gradYear ?? "—"} · Gender: {row.genderLabel}
               </p>
@@ -301,12 +363,27 @@ function PacketCard({
                     <span className="font-medium">{titleCaseVote(item.value)}</span>
                   </div>
                 ))}
-                {isChair && (
-                  <div className="mt-2 border-t border-slate-200 pt-2 text-sm font-medium text-slate-900">
-                    Votes: {voteCount}
-                  </div>
-                )}
               </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="text-sm font-semibold text-slate-900 mb-1">Practice availability</div>
+            <div className="flex gap-1">
+              {PRACTICE_DAYS.map((day) => {
+                const available = row.practiceAvailability.includes(day.key);
+                return (
+                  <div
+                    key={day.key}
+                    className={`flex flex-col items-center rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                      available ? "bg-green-100 text-green-800" : "bg-slate-100 text-slate-400"
+                    }`}
+                  >
+                    <span>{day.label}</span>
+                    <span>{available ? "✓" : "✗"}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -379,9 +456,36 @@ function PacketSection({
   onPacketNotesSave: (uid: string, notes: string) => void;
   onFinalDecisionChange: (uid: string, decision: FinalDecision) => void;
 }) {
+  const uncategorized = rows.filter((r) => !r.packetCategory);
+
   return (
     <section className="space-y-4">
       <h2 className="text-2xl font-semibold text-slate-900">{title}</h2>
+
+      {isChair && uncategorized.length > 0 && (
+        <div className="space-y-3">
+          <div className="inline-block rounded-md bg-slate-200 px-3 py-1 text-lg font-semibold text-slate-700">
+            Uncategorized ({uncategorized.length})
+          </div>
+          <div className="space-y-4">
+            {uncategorized.map((row) => (
+              <PacketCard
+                key={row.id + row.interviewBlurb + row.packetNotes}
+                row={row}
+                isChair={isChair}
+                voteCount={voteCounts[row.id] ?? 0}
+                selected={selections.includes(row.id)}
+                onToggleVote={onToggleVote}
+                onCategoryChange={onCategoryChange}
+                onBlurbSave={onBlurbSave}
+                onPacketNotesSave={onPacketNotesSave}
+                onFinalDecisionChange={onFinalDecisionChange}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {CATEGORY_ORDER.map((category) => {
         const group = rows.filter((r) => r.packetCategory === category);
         if (group.length === 0) return null;
@@ -394,7 +498,7 @@ function PacketSection({
             <div className="space-y-4">
               {group.map((row) => (
                 <PacketCard
-                  key={row.id}
+                  key={row.id + row.interviewBlurb + row.packetNotes}
                   row={row}
                   isChair={isChair}
                   voteCount={voteCounts[row.id] ?? 0}
@@ -425,7 +529,8 @@ export default function Stage3PacketsPage() {
   const [rows, setRows] = useState<ProspieRow[]>([]);
   const [loadingRows, setLoadingRows] = useState(true);
   const [votes, setVotes] = useState<Record<string, VoteDoc>>({});
-  const [savingVote, setSavingVote] = useState(false);
+  const [savingMenVote, setSavingMenVote] = useState(false);
+  const [savingWomenVote, setSavingWomenVote] = useState(false);
 
   const [myMenSelections, setMyMenSelections] = useState<string[]>([]);
   const [myWomenSelections, setMyWomenSelections] = useState<string[]>([]);
@@ -441,35 +546,51 @@ export default function Stage3PacketsPage() {
   }, []);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "prospies"), (snap) => {
+    if (roleLoading) return;
+
+    const CATEGORIES = ["auto_on", "probably", "maybe", "probably_not"] as const;
+
+    const prospiesQuery = isChair
+      ? collection(db, "prospies")
+      : query(collection(db, "prospies"), where("stage3.packetCategory", "in", CATEGORIES));
+
+    const unsub = onSnapshot(prospiesQuery, (snap) => {
       const next = snap.docs
         .map((d) => ({ id: d.id, data: d.data() as ProspieDoc }))
-        .filter(({ data }) => {
-          return (
-            data.stage1Decision === "advance" ||
-            data.stage1FinalDecision === "advance" ||
-            data.stage2?.interviewComplete === true ||
-            (data.stage ?? 0) >= 3
-          );
-        })
+        .filter(({ data }) =>
+          isChair
+            ? (data.stage1Decision === "advance" ||
+               data.stage1FinalDecision === "advance" ||
+               data.stage2?.interviewComplete === true ||
+               (data.stage ?? 0) >= 3)
+            : true
+        )
         .map(({ id, data }) => toRow(id, data));
 
       setRows(next);
       setLoadingRows(false);
     });
     return () => unsub();
-  }, []);
+  }, [isChair, roleLoading]);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "stage3Votes"), (snap) => {
-      const next: Record<string, VoteDoc> = {};
-      snap.docs.forEach((d) => {
-        next[d.id] = d.data() as VoteDoc;
+    if (roleLoading) return;
+
+    if (isChair) {
+      const unsub = onSnapshot(collection(db, "stage3Votes"), (snap) => {
+        const next: Record<string, VoteDoc> = {};
+        snap.docs.forEach((d) => { next[d.id] = d.data() as VoteDoc; });
+        setVotes(next);
       });
-      setVotes(next);
+      return () => unsub();
+    }
+
+    if (!myUid) return;
+    const unsub = onSnapshot(doc(db, "stage3Votes", myUid), (snap) => {
+      setVotes(snap.exists() ? { [myUid]: snap.data() as VoteDoc } : {});
     });
     return () => unsub();
-  }, []);
+  }, [isChair, myUid, roleLoading]);
 
   useEffect(() => {
     if (!myUid) return;
@@ -499,6 +620,8 @@ export default function Stage3PacketsPage() {
   const womenVotesAllowed = Math.max(0, settings.womenVotesAllowed ?? 0);
   const menPublished = Boolean(settings.menPacketsPublished);
   const womenPublished = Boolean(settings.womenPacketsPublished);
+  const menVotingOpen = Boolean(settings.menVotingOpen);
+  const womenVotingOpen = Boolean(settings.womenVotingOpen);
 
   async function updateRecruitmentSettings(patch: Record<string, unknown>) {
     await updateDoc(doc(db, "settings", "global"), patch);
@@ -550,27 +673,44 @@ export default function Stage3PacketsPage() {
     setter(current.filter((id) => id !== uid));
   }
 
-  async function submitVotes() {
+  async function toggleVoting(bucket: "men" | "women", open: boolean) {
+    const key = bucket === "men" ? "recruitment.menVotingOpen" : "recruitment.womenVotingOpen";
+    await updateRecruitmentSettings({ [key]: open });
+  }
+
+  async function submitMenVotes() {
     if (!myUid) return;
-    setSavingVote(true);
+    setSavingMenVote(true);
     try {
       await setDoc(
         doc(db, "stage3Votes", myUid),
-        {
-          submittedBy: myUid,
-          menSelections: myMenSelections,
-          womenSelections: myWomenSelections,
-          submittedAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        },
+        { submittedBy: myUid, menSelections: myMenSelections, updatedAt: serverTimestamp() },
         { merge: true }
       );
-      alert("Votes submitted.");
+      alert("Men votes submitted.");
     } catch (e: any) {
       console.error(e);
-      alert(e?.message ?? "Failed to submit votes.");
+      alert(e?.message ?? "Failed to submit men votes.");
     } finally {
-      setSavingVote(false);
+      setSavingMenVote(false);
+    }
+  }
+
+  async function submitWomenVotes() {
+    if (!myUid) return;
+    setSavingWomenVote(true);
+    try {
+      await setDoc(
+        doc(db, "stage3Votes", myUid),
+        { submittedBy: myUid, womenSelections: myWomenSelections, updatedAt: serverTimestamp() },
+        { merge: true }
+      );
+      alert("Women votes submitted.");
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message ?? "Failed to submit women votes.");
+    } finally {
+      setSavingWomenVote(false);
     }
   }
 
@@ -630,27 +770,16 @@ export default function Stage3PacketsPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-6">
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-center text-purple-600">Stage 3 packets</h1>
-            <p className="mt-2 text-slate-600">
-              Chairs can build and publish packets. Members can vote once packets are published.
-            </p>
-          </div>
-
-          <button
-            onClick={() => navigate("/member/recruitment")}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900"
-          >
-            Back to recruitment
-          </button>
-        </div>
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm text-center">
+        <h1 className="text-2xl font-bold text-purple-600">Packets</h1>
+        <p className="mt-2 text-slate-600">
+          Chairs can build and publish packets. Members can vote once packets are published.
+        </p>
       </div>
 
       {isChair && (
         <div className="grid gap-4 lg:grid-cols-2">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4 text-center">
             <h2 className="text-xl font-semibold text-slate-900">Men packet controls</h2>
             <label className="block">
               <div className="mb-1 text-sm font-medium text-slate-700">Votes allowed</div>
@@ -662,12 +791,18 @@ export default function Stage3PacketsPage() {
                 className="w-28 rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-900"
               />
             </label>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap justify-center gap-2">
               <button
                 onClick={() => publishPackets("men", !menPublished)}
                 className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white"
               >
                 {menPublished ? "Unpublish men packet" : "Publish men packet"}
+              </button>
+              <button
+                onClick={() => toggleVoting("men", !menVotingOpen)}
+                className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${menVotingOpen ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"}`}
+              >
+                {menVotingOpen ? "Close men voting" : "Open men voting"}
               </button>
               <button
                 onClick={() => bulkAssignUncategorized("men", "maybe")}
@@ -678,7 +813,7 @@ export default function Stage3PacketsPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4 text-center">
             <h2 className="text-xl font-semibold text-slate-900">Women packet controls</h2>
             <label className="block">
               <div className="mb-1 text-sm font-medium text-slate-700">Votes allowed</div>
@@ -690,12 +825,18 @@ export default function Stage3PacketsPage() {
                 className="w-28 rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-900"
               />
             </label>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap justify-center gap-2">
               <button
                 onClick={() => publishPackets("women", !womenPublished)}
                 className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white"
               >
                 {womenPublished ? "Unpublish women packet" : "Publish women packet"}
+              </button>
+              <button
+                onClick={() => toggleVoting("women", !womenVotingOpen)}
+                className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${womenVotingOpen ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"}`}
+              >
+                {womenVotingOpen ? "Close women voting" : "Open women voting"}
               </button>
               <button
                 onClick={() => bulkAssignUncategorized("women", "maybe")}
@@ -711,13 +852,23 @@ export default function Stage3PacketsPage() {
       {!isChair && (
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="text-lg font-semibold text-slate-900">Men packet voting</div>
+            <div className="flex items-center gap-2">
+              <div className="text-lg font-semibold text-slate-900">Men packet voting</div>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${menVotingOpen ? "bg-green-100 text-green-800" : "bg-red-100 text-red-700"}`}>
+                {menVotingOpen ? "Open" : "Closed"}
+              </span>
+            </div>
             <p className="mt-2 text-sm text-slate-600">
               Votes remaining: {Math.max(0, menVotesAllowed - myMenSelections.length)} / {menVotesAllowed}
             </p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="text-lg font-semibold text-slate-900">Women packet voting</div>
+            <div className="flex items-center gap-2">
+              <div className="text-lg font-semibold text-slate-900">Women packet voting</div>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${womenVotingOpen ? "bg-green-100 text-green-800" : "bg-red-100 text-red-700"}`}>
+                {womenVotingOpen ? "Open" : "Closed"}
+              </span>
+            </div>
             <p className="mt-2 text-sm text-slate-600">
               Votes remaining: {Math.max(0, womenVotesAllowed - myWomenSelections.length)} / {womenVotesAllowed}
             </p>
@@ -775,13 +926,20 @@ export default function Stage3PacketsPage() {
       )}
 
       {!isChair && (
-        <div className="sticky bottom-4 flex justify-end">
+        <div className="sticky bottom-4 flex justify-end gap-3">
           <button
-            onClick={submitVotes}
-            disabled={savingVote}
-            className="rounded-xl bg-purple-600 hover:bg-purple-700 px-5 py-3 text-sm font-semibold text-white shadow-lg disabled:opacity-50"
+            onClick={submitMenVotes}
+            disabled={savingMenVote || !menVotingOpen}
+            className="rounded-xl bg-purple-600 hover:bg-purple-700 px-5 py-3 text-sm font-semibold text-white shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {savingVote ? "Submitting…" : "Submit votes"}
+            {savingMenVote ? "Submitting…" : "Submit men votes"}
+          </button>
+          <button
+            onClick={submitWomenVotes}
+            disabled={savingWomenVote || !womenVotingOpen}
+            className="rounded-xl bg-purple-600 hover:bg-purple-700 px-5 py-3 text-sm font-semibold text-white shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {savingWomenVote ? "Submitting…" : "Submit women votes"}
           </button>
         </div>
       )}

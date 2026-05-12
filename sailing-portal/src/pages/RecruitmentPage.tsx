@@ -150,7 +150,6 @@ function Stage2SlotColumn({
                 className="rounded-lg border border-slate-200 bg-blue-50 p-3 shadow"
               >
                 <div className="text-center font-semibold text-slate-900">{r.name}</div>
-                <div className="text-center text-sm text-slate-600">{r.email ?? "—"}</div>
 
                 <div className="mt-3 space-y-2">
                   <label className="flex items-center justify-center gap-2 text-sm text-slate-800">
@@ -204,6 +203,7 @@ export default function RecruitmentPage() {
   const [isOpen, setIsOpen] = useState(true);
   const [activeStage, setActiveStage] = useState("stage1");
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [confirmEndStage1, setConfirmEndStage1] = useState(false);
 
   useEffect(() => {
     const ref = doc(db, "settings", "global");
@@ -475,7 +475,14 @@ export default function RecruitmentPage() {
     });
   }
 
+  useEffect(() => {
+    if (!settingsLoading && activeStage === "stage3") {
+      navigate("/member/recruitment/stage3/packets", { replace: true });
+    }
+  }, [settingsLoading, activeStage, navigate]);
+
   if (settingsLoading) return <div className="p-6">Loading…</div>;
+  if (activeStage === "stage3") return null;
 
   if (settingsError) {
     return (
@@ -517,44 +524,58 @@ export default function RecruitmentPage() {
         <div className="mt-4 flex flex-wrap justify-center gap-3">
           {isChair && (
             <>
-              <button
-                onClick={() => navigate("/member/recruitment/prospies")}
-                className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700"
-              >
-                See prospies
-              </button>
+{activeStage === "stage1" ? (
+                confirmEndStage1 ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2">
+                    <span className="text-sm font-medium text-amber-800">End Stage 1?</span>
+                    <button
+                      onClick={() => { setConfirmEndStage1(false); navigate("/member/recruitment/roster"); }}
+                      className="rounded-lg bg-amber-600 hover:bg-amber-700 px-3 py-1 text-sm font-semibold text-white"
+                    >
+                      Yes, end Stage 1
+                    </button>
+                    <button
+                      onClick={() => setConfirmEndStage1(false)}
+                      className="rounded-lg border border-slate-300 bg-white hover:bg-slate-50 px-3 py-1 text-sm font-semibold text-slate-700"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmEndStage1(true)}
+                    className="rounded-lg bg-amber-600 hover:bg-amber-700 px-4 py-2 text-sm font-semibold text-white"
+                  >
+                    End Stage 1
+                  </button>
+                )
+              ) : (
+                <button
+                  onClick={advanceStage}
+                  className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white"
+                >
+                  Advance stage → {nextStage}
+                </button>
+              )}
 
               <button
-                onClick={advanceStage}
-                className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700"
-              >
-                Advance stage → {nextStage}
-              </button>
-
-              <button
-                className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700"
+                className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white"
                 onClick={() => navigate("/member/recruitment/roster")}
               >
                 Roster / Decisioning
               </button>
 
-              {activeStage === "stage3" && (
-                <button
-                  onClick={() => navigate("/member/recruitment/stage3/packets")}
-                  className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700"
-                >
-                  Open Stage 3 Packets
-                </button>
-              )}
             </>
           )}
 
-          <button
-            onClick={() => navigate("/member/recruitment/stage2/notes")}
-            className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600"
-          >
-            Upload on-the-water notes
-          </button>
+          {activeStage === "stage2" && (
+            <button
+              onClick={() => navigate("/member/recruitment/stage2/notes")}
+              className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600"
+            >
+              Upload on-the-water notes
+            </button>
+          )}
         </div>
       </div>
 

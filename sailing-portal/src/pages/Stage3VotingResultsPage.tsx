@@ -14,6 +14,26 @@ type PacketCategory = "auto_on" | "probably" | "maybe" | "probably_not";
 type FinalDecision = "offer" | "drop" | "undecided";
 type YesMaybeNo = "yes" | "maybe" | "no";
 
+const MAX_SCORE = 7;
+
+function evalScore(v?: YesMaybeNo): number {
+  if (v === "yes") return 1;
+  if (v === "maybe") return 0.5;
+  return 0;
+}
+
+function calcScore(data: ProspieDoc): number {
+  return (
+    evalScore(data.stage1SailingInterviewSummary?.sailingEval1) +
+    evalScore(data.stage1SailingInterviewSummary?.sailingEval2) +
+    evalScore(data.stage1PersonalityInterviewSummary?.eval1) +
+    evalScore(data.stage1PersonalityInterviewSummary?.eval2) +
+    evalScore(data.stage2?.onTheWaterEval) +
+    evalScore(data.stage2InterviewSummary?.eval1) +
+    evalScore(data.stage2InterviewSummary?.eval2)
+  );
+}
+
 type ProspieDoc = {
   firstName?: string;
   lastName?: string;
@@ -29,6 +49,9 @@ type ProspieDoc = {
   stage1PersonalityInterviewSummary?: {
     eval1?: YesMaybeNo;
     eval2?: YesMaybeNo;
+  };
+  stage2?: {
+    onTheWaterEval?: YesMaybeNo;
   };
   stage2InterviewSummary?: {
     eval1?: YesMaybeNo;
@@ -58,6 +81,7 @@ type ResultRow = {
   voteCount: number;
   finalDecision: FinalDecision;
   packetNotes: string;
+  totalScore: number;
 };
 
 const CATEGORY_LABELS: Record<PacketCategory, string> = {
@@ -89,6 +113,7 @@ function toResultRow(id: string, data: ProspieDoc, voteCount: number): ResultRow
     voteCount,
     finalDecision: data.stage3?.finalDecision ?? "undecided",
     packetNotes: data.stage3?.packetNotes ?? "",
+    totalScore: calcScore(data),
   };
 }
 
@@ -189,6 +214,9 @@ function ResultsTable({
               <th className="border-b border-slate-200 px-3 py-3 text-left font-semibold text-slate-900">
                 Category
               </th>
+              <th className="border-b border-slate-200 px-3 py-3 text-left font-semibold text-slate-900">
+                Score
+              </th>
               <th
                 className="border-b border-slate-200 px-3 py-3 text-left font-semibold text-slate-900 cursor-pointer hover:bg-slate-200"
                 onClick={() => toggleSort("votes")}
@@ -233,6 +261,13 @@ function ResultsTable({
                     <span className="inline-block rounded-full bg-slate-200 px-2 py-1 text-xs font-medium text-slate-800">
                       {row.category ? CATEGORY_LABELS[row.category] : "—"}
                     </span>
+                  </td>
+                  <td className="px-3 py-3">
+                    {(() => {
+                      const pct = row.totalScore / MAX_SCORE;
+                      const color = pct >= 0.75 ? "bg-green-100 text-green-800" : pct >= 0.5 ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-800";
+                      return <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${color}`}>{row.totalScore}/{MAX_SCORE}</span>;
+                    })()}
                   </td>
                   <td className="px-3 py-3 font-semibold text-slate-900">{row.voteCount}</td>
                   <td className="px-3 py-3">

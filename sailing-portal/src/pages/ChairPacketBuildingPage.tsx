@@ -25,6 +25,7 @@ type ProspieDoc = {
     sailingEval1?: YesMaybeNo;
     sailingEval2?: YesMaybeNo;
     notes1?: string;
+    hasSailingExperience?: boolean;
   };
   stage1PersonalityInterviewSummary?: {
     eval1?: YesMaybeNo;
@@ -35,9 +36,11 @@ type ProspieDoc = {
     eval1?: YesMaybeNo;
     eval2?: YesMaybeNo;
     notes1?: string;
+    practiceAvailability?: string[];
   };
   stage2?: {
     interviewComplete?: boolean;
+    onTheWaterEval?: YesMaybeNo;
   };
   stage3?: {
     packetCategory?: PacketCategory | null;
@@ -58,7 +61,18 @@ type ProspieRow = {
   stage2Scores: { label: string; value: YesMaybeNo | "—" }[];
   interviewBlurb: string;
   packetCategory: PacketCategory | null;
+  totalScore: number;
+  hasSailingExperience: boolean;
+  practiceAvailability: string[];
 };
+
+const PRACTICE_DAYS = [
+  { key: "monday",    label: "Mon" },
+  { key: "tuesday",  label: "Tue" },
+  { key: "wednesday",label: "Wed" },
+  { key: "thursday", label: "Thu" },
+  { key: "friday",   label: "Fri" },
+] as const;
 
 const CATEGORY_LABELS: Record<PacketCategory, string> = {
   auto_on: "Auto-ons",
@@ -80,6 +94,26 @@ const CATEGORY_ORDER: PacketCategory[] = [
   "maybe",
   "probably_not",
 ];
+
+const MAX_SCORE = 7;
+
+function evalScore(v?: YesMaybeNo): number {
+  if (v === "yes") return 1;
+  if (v === "maybe") return 0.5;
+  return 0;
+}
+
+function calcScore(data: ProspieDoc): number {
+  return (
+    evalScore(data.stage1SailingInterviewSummary?.sailingEval1) +
+    evalScore(data.stage1SailingInterviewSummary?.sailingEval2) +
+    evalScore(data.stage1PersonalityInterviewSummary?.eval1) +
+    evalScore(data.stage1PersonalityInterviewSummary?.eval2) +
+    evalScore(data.stage2?.onTheWaterEval) +
+    evalScore(data.stage2InterviewSummary?.eval1) +
+    evalScore(data.stage2InterviewSummary?.eval2)
+  );
+}
 
 function normalizeGenderBucket(raw?: string): "men" | "women" | "other" {
   const v = (raw ?? "").trim().toLowerCase();
@@ -130,12 +164,29 @@ function toRow(id: string, data: ProspieDoc): ProspieRow {
       { label: "Personality 2", value: scoreLabel(data.stage1PersonalityInterviewSummary?.eval2) },
     ],
     stage2Scores: [
-      { label: "On the water", value: scoreLabel(data.stage2InterviewSummary?.eval1) },
-      { label: "Stage 2 interview", value: scoreLabel(data.stage2InterviewSummary?.eval2) },
+      { label: "On the water", value: scoreLabel(data.stage2?.onTheWaterEval) },
+      { label: "Interview 1", value: scoreLabel(data.stage2InterviewSummary?.eval1) },
+      { label: "Interview 2", value: scoreLabel(data.stage2InterviewSummary?.eval2) },
     ],
     interviewBlurb: coalesceBlurb(data),
     packetCategory: data.stage3?.packetCategory ?? null,
+    totalScore: calcScore(data),
+    hasSailingExperience: data.stage1SailingInterviewSummary?.hasSailingExperience ?? false,
+    practiceAvailability: data.stage2InterviewSummary?.practiceAvailability ?? [],
   };
+}
+
+function ScoreBadge({ score }: { score: number }) {
+  const pct = score / MAX_SCORE;
+  const color =
+    pct >= 0.75 ? "bg-green-100 text-green-800" :
+    pct >= 0.5  ? "bg-amber-100 text-amber-800" :
+                  "bg-red-100 text-red-800";
+  return (
+    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${color}`}>
+      {score}/{MAX_SCORE}
+    </span>
+  );
 }
 
 function ProspieCard({
@@ -165,7 +216,13 @@ function ProspieCard({
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-col justify-between md:flex-row md:items-start md:justify-between gap-2">
             <div>
-              <h4 className="font-semibold text-slate-900">{row.name}</h4>
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="font-semibold text-slate-900">{row.name}</h4>
+                <ScoreBadge score={row.totalScore} />
+                <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${row.hasSailingExperience ? "bg-blue-100 text-blue-800" : "bg-slate-100 text-slate-500"}`}>
+                  {row.hasSailingExperience ? "Sailing exp." : "No sailing exp."}
+                </span>
+              </div>
               <p className="text-xs text-slate-600">
                 {row.gradYear && `Grad ${row.gradYear}`}
                 {row.email && ` · ${row.email}`}
@@ -223,6 +280,26 @@ function ProspieCard({
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-50 rounded-lg p-2">
+            <div className="text-xs font-semibold text-slate-700 mb-1">Practice availability</div>
+            <div className="flex gap-1">
+              {PRACTICE_DAYS.map((day) => {
+                const available = row.practiceAvailability.includes(day.key);
+                return (
+                  <div
+                    key={day.key}
+                    className={`flex flex-col items-center rounded-lg px-2 py-1 text-xs font-semibold ${
+                      available ? "bg-green-100 text-green-800" : "bg-slate-100 text-slate-400"
+                    }`}
+                  >
+                    <span>{day.label}</span>
+                    <span>{available ? "✓" : "✗"}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
