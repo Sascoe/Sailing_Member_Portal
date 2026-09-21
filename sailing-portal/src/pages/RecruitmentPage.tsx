@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUserRole } from "../auth/useUserRole";
-import { auth, db } from "../app/firebase";
+import { auth, db, functions } from "../app/firebase";
 import {
   collection,
   doc,
@@ -13,20 +13,32 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 
 type QueueEntry = {
   uid: string;
-  name?: string;
+  firstName?: string;
+  lastName?: string;
+  photoUrl?: string;
+  recruitmentDay?: number;
   email?: string;
   status?: string;
   enqueuedAt?: unknown;
   claimedBy?: string;
 };
 
+type Stage1Phase =
+  | "day1_interviews"
+  | "day1_decisions"
+  | "day2_interviews"
+  | "day2_decisions"
+  | "final_decisions";
+
 type RecruitmentSettings = {
   recruitment?: {
     isOpen?: boolean;
     activeStage?: string;
+    stage1Phase?: Stage1Phase;
   };
 };
 
@@ -54,16 +66,26 @@ function QueueTable({
   rows,
   loading,
   error,
-  onClaim,
-  claimingUid,
+  actionLabel,
+  actionBusyLabel,
+  onAction,
+  busyUid,
+  onRemove,
+  removingUid,
 }: {
   title: string;
   rows: QueueEntry[];
   loading: boolean;
   error: string | null;
-  onClaim: (uid: string) => void;
-  claimingUid: string | null;
+  actionLabel: string;
+  actionBusyLabel: string;
+  onAction: (uid: string) => void;
+  busyUid: string | null;
+  onRemove: (uid: string) => void;
+  removingUid: string | null;
 }) {
+  const [expandedUid, setExpandedUid] = useState<string | null>(null);
+
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-lg">
       <div className="flex items-center justify-center">
@@ -87,6 +109,7 @@ function QueueTable({
           <table className="w-full border-collapse text-left text-sm text-slate-900">
             <thead>
               <tr className="border-b border-slate-300">
+                <th className="py-2 pr-4 text-purple-700">Photo</th>
                 <th className="py-2 pr-4 text-purple-700">Name</th>
                 <th className="py-2 pr-4 text-purple-700">Email</th>
                 <th className="py-2 pr-4 text-purple-700">Status</th>
@@ -95,18 +118,47 @@ function QueueTable({
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.uid} className="border-b border-slate-200">
-                  <td className="py-2 pr-4">{r.name ?? "—"}</td>
+                <tr
+                  key={r.uid}
+                  onClick={() =>
+                    setExpandedUid((prev) => (prev === r.uid ? null : r.uid))
+                  }
+                  className="cursor-pointer border-b border-slate-200 hover:bg-slate-50"
+                >
+                  <td className="py-2 pr-4">
+                    {r.photoUrl && (
+                      <img
+                        src={r.photoUrl}
+                        alt="Profile photo"
+                        className="h-8 w-8 rounded-full object-cover"
+                      />
+                    )}
+                  </td>
+                  <td className="py-2 pr-4">
+                    {`${r.firstName ?? ""} ${r.lastName ?? ""}`.trim() || "—"}
+                  </td>
                   <td className="py-2 pr-4">{r.email ?? "—"}</td>
                   <td className="py-2 pr-4">{r.status ?? "waiting"}</td>
-                  <td className="py-2 pr-0 text-center">
-                    <button
-                      onClick={() => onClaim(r.uid)}
-                      disabled={claimingUid === r.uid}
-                      className="rounded-lg bg-purple-600 hover:bg-purple-700 px-3 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50"
-                    >
-                      {claimingUid === r.uid ? "Claiming…" : "Claim"}
-                    </button>
+                  <td className="py-2 pr-0 text-center" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex flex-col items-center gap-1">
+                      <button
+                        onClick={() => onAction(r.uid)}
+                        disabled={busyUid === r.uid}
+                        className="rounded-lg bg-purple-600 hover:bg-purple-700 px-3 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50"
+                      >
+                        {busyUid === r.uid ? actionBusyLabel : actionLabel}
+                      </button>
+
+                      {expandedUid === r.uid && (
+                        <button
+                          onClick={() => onRemove(r.uid)}
+                          disabled={removingUid === r.uid}
+                          className="rounded-lg bg-red-600 hover:bg-red-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                        >
+                          {removingUid === r.uid ? "Removing…" : "Remove"}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -202,8 +254,13 @@ export default function RecruitmentPage() {
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(true);
   const [activeStage, setActiveStage] = useState("stage1");
+  const [stage1Phase, setStage1Phase] = useState<Stage1Phase>("day1_interviews");
   const [settingsError, setSettingsError] = useState<string | null>(null);
-  const [confirmEndStage1, setConfirmEndStage1] = useState(false);
+  const [confirmEndDay, setConfirmEndDay] = useState(false);
+
+  const isInterviewPhase =
+    stage1Phase === "day1_interviews" || stage1Phase === "day2_interviews";
+  const isDecisionPhase = !isInterviewPhase;
 
   useEffect(() => {
     const ref = doc(db, "settings", "global");
@@ -215,6 +272,7 @@ export default function RecruitmentPage() {
         const rec = data.recruitment ?? {};
         setIsOpen(rec.isOpen ?? true);
         setActiveStage(rec.activeStage ?? "stage1");
+        setStage1Phase(rec.stage1Phase ?? "day1_interviews");
         setSettingsLoading(false);
         setSettingsError(null);
       },
@@ -237,11 +295,47 @@ export default function RecruitmentPage() {
   const [personalityLoading, setPersonalityLoading] = useState(true);
   const [personalityError, setPersonalityError] = useState<string | null>(null);
 
+  const [quizRows, setQuizRows] = useState<QueueEntry[]>([]);
+  const [quizLoading, setQuizLoading] = useState(true);
+  const [quizError, setQuizError] = useState<string | null>(null);
+
+  // Unfiltered counts (waiting + claimed) so we can tell when a day's queues
+  // are fully drained, not just when nobody is left "waiting".
+  const [sailingQueueCount, setSailingQueueCount] = useState(0);
+  const [quizQueueCount, setQuizQueueCount] = useState(0);
+  const [personalityQueueCount, setPersonalityQueueCount] = useState(0);
+  const queuesDrained =
+    sailingQueueCount === 0 && quizQueueCount === 0 && personalityQueueCount === 0;
+
+  useEffect(() => {
+    if (activeStage !== "stage1") return;
+
+    const unsubSailingCount = onSnapshot(
+      collection(db, "stage1SailingQueue"),
+      (snap) => setSailingQueueCount(snap.size)
+    );
+    const unsubQuizCount = onSnapshot(
+      collection(db, "stage1QuizQueue"),
+      (snap) => setQuizQueueCount(snap.size)
+    );
+    const unsubPersonalityCount = onSnapshot(
+      collection(db, "stage1PersonalityQueue"),
+      (snap) => setPersonalityQueueCount(snap.size)
+    );
+
+    return () => {
+      unsubSailingCount();
+      unsubQuizCount();
+      unsubPersonalityCount();
+    };
+  }, [activeStage]);
+
   useEffect(() => {
     if (activeStage !== "stage1") return;
 
     setSailingLoading(true);
     setPersonalityLoading(true);
+    setQuizLoading(true);
 
     const sailingQ = query(
       collection(db, "stage1SailingQueue"),
@@ -264,6 +358,27 @@ export default function RecruitmentPage() {
         console.error("stage1SailingQueue error:", err);
         setSailingError(err.message ?? "Unknown error");
         setSailingLoading(false);
+      }
+    );
+
+    // No claim step for the quiz queue, so no "waiting" status filter needed.
+    const quizQ = query(collection(db, "stage1QuizQueue"), orderBy("enqueuedAt", "asc"));
+
+    const unsubQuiz = onSnapshot(
+      quizQ,
+      (snap) => {
+        const rows: QueueEntry[] = snap.docs.map((d) => ({
+          uid: d.id,
+          ...(d.data() as any),
+        }));
+        setQuizRows(rows);
+        setQuizLoading(false);
+        setQuizError(null);
+      },
+      (err) => {
+        console.error("stage1QuizQueue error:", err);
+        setQuizError(err.message ?? "Unknown error");
+        setQuizLoading(false);
       }
     );
 
@@ -293,6 +408,7 @@ export default function RecruitmentPage() {
 
     return () => {
       unsubSailing();
+      unsubQuiz();
       unsubPersonality();
     };
   }, [activeStage]);
@@ -316,7 +432,7 @@ export default function RecruitmentPage() {
       q,
       (snap) => {
         const rows: Stage2Row[] = snap.docs
-          .map((d) => {
+          .map((d): Stage2Row | null => {
             const data = d.data() as any;
 
             const slot =
@@ -377,6 +493,30 @@ export default function RecruitmentPage() {
   // --- Claim handlers ---
   const [claimingUid, setClaimingUid] = useState<string | null>(null);
 
+  // --- Remove (permanently delete) handler ---
+  const [removingUid, setRemovingUid] = useState<string | null>(null);
+
+  async function removeProspieFromQueue(uid: string) {
+    if (
+      !confirm(
+        "Permanently remove this prospie? This deletes their account and all recruitment data. This cannot be undone."
+      )
+    ) {
+      return;
+    }
+
+    setRemovingUid(uid);
+    try {
+      const removeProspie = httpsCallable(functions, "removeProspie");
+      await removeProspie({ uid });
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message ?? "Failed to remove prospie.");
+    } finally {
+      setRemovingUid(null);
+    }
+  }
+
   async function claimFromQueue(
     collectionName: "stage1SailingQueue" | "stage1PersonalityQueue",
     queueUid: string
@@ -419,6 +559,44 @@ export default function RecruitmentPage() {
       else setPersonalityError(msg);
     } finally {
       setClaimingUid(null);
+    }
+  }
+
+  // --- Quiz queue: no claim step, one click moves them to the personality queue ---
+  const [completingQuizUid, setCompletingQuizUid] = useState<string | null>(null);
+
+  async function completeQuiz(queueUid: string) {
+    setCompletingQuizUid(queueUid);
+
+    try {
+      const quizRef = doc(db, "stage1QuizQueue", queueUid);
+      const personalityRef = doc(db, "stage1PersonalityQueue", queueUid);
+
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(quizRef);
+        if (!snap.exists()) {
+          throw new Error("This prospie is no longer in the quiz queue.");
+        }
+
+        const data = snap.data() as QueueEntry;
+
+        tx.delete(quizRef);
+        tx.set(personalityRef, {
+          uid: queueUid,
+          firstName: data.firstName ?? "",
+          lastName: data.lastName ?? "",
+          photoUrl: data.photoUrl ?? "",
+          recruitmentDay: data.recruitmentDay ?? 1,
+          email: data.email ?? "",
+          status: "waiting",
+          enqueuedAt: serverTimestamp(),
+        });
+      });
+    } catch (e: any) {
+      console.error(e);
+      setQuizError(e?.message ?? "Failed to complete quiz.");
+    } finally {
+      setCompletingQuizUid(null);
     }
   }
 
@@ -475,14 +653,47 @@ export default function RecruitmentPage() {
     });
   }
 
+  // --- Chair: end the current Stage 1 day ---
+  const currentDayNumber = stage1Phase === "day2_interviews" ? "2" : "1";
+  const dayLabel = `Day ${currentDayNumber}`;
+
+  async function endCurrentDay() {
+    if (!isChair || !queuesDrained) return;
+
+    const nextPhase: Stage1Phase =
+      stage1Phase === "day1_interviews" ? "day1_decisions" : "day2_decisions";
+
+    const ref = doc(db, "settings", "global");
+    await updateDoc(ref, {
+      "recruitment.stage1Phase": nextPhase,
+    });
+
+    setConfirmEndDay(false);
+    navigate(`/member/recruitment/roster/${currentDayNumber}`);
+  }
+
   useEffect(() => {
-    if (!settingsLoading && activeStage === "stage3") {
+    if (settingsLoading) return;
+
+    if (activeStage === "stage3") {
       navigate("/member/recruitment/stage3/packets", { replace: true });
+      return;
     }
-  }, [settingsLoading, activeStage, navigate]);
+
+    if (activeStage === "stage1" && isDecisionPhase) {
+      const day =
+        stage1Phase === "day1_decisions"
+          ? "1"
+          : stage1Phase === "day2_decisions"
+          ? "2"
+          : "all";
+      navigate(`/member/recruitment/roster/${day}`, { replace: true });
+    }
+  }, [settingsLoading, activeStage, stage1Phase, isDecisionPhase, navigate]);
 
   if (settingsLoading) return <div className="p-6">Loading…</div>;
   if (activeStage === "stage3") return null;
+  if (activeStage === "stage1" && isDecisionPhase) return null;
 
   if (settingsError) {
     return (
@@ -525,29 +736,39 @@ export default function RecruitmentPage() {
           {isChair && (
             <>
 {activeStage === "stage1" ? (
-                confirmEndStage1 ? (
+                confirmEndDay ? (
                   <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2">
-                    <span className="text-sm font-medium text-amber-800">End Stage 1?</span>
+                    <span className="text-sm font-medium text-amber-800">
+                      End {dayLabel}?
+                    </span>
                     <button
-                      onClick={() => { setConfirmEndStage1(false); navigate("/member/recruitment/roster"); }}
+                      onClick={endCurrentDay}
                       className="rounded-lg bg-amber-600 hover:bg-amber-700 px-3 py-1 text-sm font-semibold text-white"
                     >
-                      Yes, end Stage 1
+                      Yes, end {dayLabel}
                     </button>
                     <button
-                      onClick={() => setConfirmEndStage1(false)}
+                      onClick={() => setConfirmEndDay(false)}
                       className="rounded-lg border border-slate-300 bg-white hover:bg-slate-50 px-3 py-1 text-sm font-semibold text-slate-700"
                     >
                       Cancel
                     </button>
                   </div>
                 ) : (
-                  <button
-                    onClick={() => setConfirmEndStage1(true)}
-                    className="rounded-lg bg-amber-600 hover:bg-amber-700 px-4 py-2 text-sm font-semibold text-white"
-                  >
-                    End Stage 1
-                  </button>
+                  <div className="flex flex-col items-center gap-1">
+                    <button
+                      onClick={() => setConfirmEndDay(true)}
+                      disabled={!queuesDrained}
+                      className="rounded-lg bg-amber-600 hover:bg-amber-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      End {dayLabel}
+                    </button>
+                    {!queuesDrained && (
+                      <p className="text-xs text-amber-700">
+                        Waiting for the sailing, quiz, and personality queues to clear.
+                      </p>
+                    )}
+                  </div>
                 )
               ) : (
                 <button
@@ -557,14 +778,6 @@ export default function RecruitmentPage() {
                   Advance stage → {nextStage}
                 </button>
               )}
-
-              <button
-                className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white"
-                onClick={() => navigate("/member/recruitment/roster")}
-              >
-                Roster / Decisioning
-              </button>
-
             </>
           )}
 
@@ -580,14 +793,31 @@ export default function RecruitmentPage() {
       </div>
 
       {activeStage === "stage1" && (
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-6 md:grid-cols-3">
           <QueueTable
             title="Stage 1 — Sailing Queue (Waiting)"
             rows={sailingRows}
             loading={sailingLoading}
             error={sailingError}
-            claimingUid={claimingUid}
-            onClaim={(uid) => claimFromQueue("stage1SailingQueue", uid)}
+            actionLabel="Claim"
+            actionBusyLabel="Claiming…"
+            busyUid={claimingUid}
+            onAction={(uid) => claimFromQueue("stage1SailingQueue", uid)}
+            removingUid={removingUid}
+            onRemove={removeProspieFromQueue}
+          />
+
+          <QueueTable
+            title="Stage 1 — Quiz Queue (Waiting)"
+            rows={quizRows}
+            loading={quizLoading}
+            error={quizError}
+            actionLabel="Mark quiz complete"
+            actionBusyLabel="Completing…"
+            busyUid={completingQuizUid}
+            onAction={completeQuiz}
+            removingUid={removingUid}
+            onRemove={removeProspieFromQueue}
           />
 
           <QueueTable
@@ -595,8 +825,12 @@ export default function RecruitmentPage() {
             rows={personalityRows}
             loading={personalityLoading}
             error={personalityError}
-            claimingUid={claimingUid}
-            onClaim={(uid) => claimFromQueue("stage1PersonalityQueue", uid)}
+            actionLabel="Claim"
+            actionBusyLabel="Claiming…"
+            busyUid={claimingUid}
+            onAction={(uid) => claimFromQueue("stage1PersonalityQueue", uid)}
+            removingUid={removingUid}
+            onRemove={removeProspieFromQueue}
           />
         </div>
       )}

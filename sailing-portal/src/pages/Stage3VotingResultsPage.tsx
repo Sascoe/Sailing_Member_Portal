@@ -6,8 +6,9 @@ import {
   updateDoc,
   writeBatch,
 } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 import { useNavigate } from "react-router-dom";
-import { auth, db } from "../app/firebase";
+import { db, functions } from "../app/firebase";
 import { useUserRole } from "../auth/useUserRole";
 
 type PacketCategory = "auto_on" | "probably" | "maybe" | "probably_not";
@@ -68,6 +69,18 @@ type ProspieDoc = {
 type VoteDoc = {
   menSelections?: string[];
   womenSelections?: string[];
+};
+
+type RecruitmentSettings = {
+  recruitment?: {
+    menOfferThreshold?: number;
+    womenOfferThreshold?: number;
+  };
+};
+
+type FinalizedDoc = {
+  decision?: "offer" | "drop";
+  emailSent?: boolean;
 };
 
 type ResultRow = {
@@ -143,12 +156,15 @@ function ResultsTable({
   const sorted = useMemo(() => {
     const copy = [...rows];
     copy.sort((a, b) => {
-      let aVal: any = a[sortColumn];
-      let bVal: any = b[sortColumn];
+      let aVal: any;
+      let bVal: any;
 
       if (sortColumn === "votes") {
         aVal = a.voteCount;
         bVal = b.voteCount;
+      } else {
+        aVal = a[sortColumn];
+        bVal = b[sortColumn];
       }
 
       if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
@@ -322,6 +338,22 @@ export default function Stage3VotingResultsPage() {
   const [menThreshold, setMenThreshold] = useState(5);
   const [womenThreshold, setWomenThreshold] = useState(5);
 
+  const [finalized, setFinalized] = useState<Record<string, FinalizedDoc>>({});
+  const [finalizing, setFinalizing] = useState(false);
+  const [sendingEmails, setSendingEmails] = useState(false);
+  const [startingNewCycle, setStartingNewCycle] = useState(false);
+
+  useEffect(() => {
+    const ref = doc(db, "settings", "global");
+    const unsub = onSnapshot(ref, (snap) => {
+      const data = (snap.data() as RecruitmentSettings) ?? {};
+      const rec = data.recruitment ?? {};
+      setMenThreshold(rec.menOfferThreshold ?? 5);
+      setWomenThreshold(rec.womenOfferThreshold ?? 5);
+    });
+    return () => unsub();
+  }, []);
+
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "prospies"), (snap) => {
       const next: Record<string, ProspieDoc> = {};
@@ -341,6 +373,17 @@ export default function Stage3VotingResultsPage() {
         next[d.id] = d.data() as VoteDoc;
       });
       setVotes(next);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "stage3FinalizedProspies"), (snap) => {
+      const next: Record<string, FinalizedDoc> = {};
+      snap.docs.forEach((d) => {
+        next[d.id] = d.data() as FinalizedDoc;
+      });
+      setFinalized(next);
     });
     return () => unsub();
   }, []);
@@ -397,6 +440,92 @@ export default function Stage3VotingResultsPage() {
     await batch.commit();
   }
 
+  async function updateOfferThreshold(bucket: "men" | "women", value: number) {
+    const key = bucket === "men" ? "recruitment.menOfferThreshold" : "recruitment.womenOfferThreshold";
+    await updateDoc(doc(db, "settings", "global"), { [key]: value });
+  }
+
+  const finalizedList = Object.values(finalized);
+  const pendingEmailCount = finalizedList.filter((f) => !f.emailSent).length;
+
+  async function handleFinalizeStage3() {
+    if (
+      !confirm(
+        "Finalize Stage 3? Every remaining undecided prospie will be auto-resolved by vote count, offers will become members, and drops will be marked dropped. This cannot be undone."
+      )
+    ) {
+      return;
+    }
+
+    setFinalizing(true);
+    try {
+      const finalize = httpsCallable(functions, "finalizeStage3");
+      const result: any = await finalize({});
+      alert(
+        `Finalized. Offered: ${result.data.offered}, Dropped: ${result.data.dropped}, Already finalized: ${result.data.skipped}.`
+      );
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message ?? "Failed to finalize Stage 3.");
+    } finally {
+      setFinalizing(false);
+    }
+  }
+
+  async function handleSendDecisionEmails() {
+    if (!confirm(`Email ${pendingEmailCount} finalized prospie(s) their decision now?`)) {
+      return;
+    }
+
+    setSendingEmails(true);
+    try {
+      const send = httpsCallable(functions, "sendStage3DecisionEmails");
+      const result: any = await send({});
+      alert(
+        `Emails queued. Offers: ${result.data.offeredEmailed}, Drops: ${result.data.droppedEmailed}, Skipped (no email): ${result.data.skippedNoEmail}.`
+      );
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message ?? "Failed to send decision emails.");
+    } finally {
+      setSendingEmails(false);
+    }
+  }
+
+  async function handleStartNewCycle() {
+    if (
+      !confirm(
+        "Start a new recruitment cycle? This reopens recruitment and resets Stage 1 back to Day 1 interviews, and resets Stage 3 packet/voting settings. It does NOT delete any prospie data from the previous cycle — that needs to be handled separately."
+      )
+    ) {
+      return;
+    }
+
+    setStartingNewCycle(true);
+    try {
+      await updateDoc(doc(db, "settings", "global"), {
+        "recruitment.isOpen": true,
+        "recruitment.activeStage": "stage1",
+        "recruitment.stage1Phase": "day1_interviews",
+        "recruitment.menPacketsPublished": false,
+        "recruitment.womenPacketsPublished": false,
+        "recruitment.menVotingOpen": false,
+        "recruitment.womenVotingOpen": false,
+        "recruitment.menVotesAllowed": 0,
+        "recruitment.womenVotesAllowed": 0,
+        "recruitment.menOfferThreshold": 5,
+        "recruitment.womenOfferThreshold": 5,
+      });
+      alert("New recruitment cycle started. Stage 1, Day 1 interviews are now open.");
+      navigate("/member/recruitment");
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message ?? "Failed to start new recruitment cycle.");
+    } finally {
+      setStartingNewCycle(false);
+    }
+  }
+
   if (roleLoading || loading) {
     return <div className="p-6">Loading…</div>;
   }
@@ -429,14 +558,42 @@ export default function Stage3VotingResultsPage() {
             <p className="mt-2 text-slate-600">
               {totalVoters} voters · {totalVotes} votes cast
             </p>
+            {finalizedList.length > 0 && (
+              <p className="mt-1 text-sm text-slate-500">
+                {finalizedList.length} finalized · {pendingEmailCount} awaiting decision email
+              </p>
+            )}
           </div>
 
-          <button
-            onClick={() => navigate("/member/recruitment")}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900"
-          >
-            Back to recruitment
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={handleFinalizeStage3}
+              disabled={finalizing}
+              className="rounded-lg bg-green-600 hover:bg-green-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {finalizing ? "Finalizing…" : "Finalize Stage 3"}
+            </button>
+            <button
+              onClick={handleSendDecisionEmails}
+              disabled={sendingEmails || pendingEmailCount === 0}
+              className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {sendingEmails ? "Sending…" : `Email decisions${pendingEmailCount > 0 ? ` (${pendingEmailCount})` : ""}`}
+            </button>
+            <button
+              onClick={handleStartNewCycle}
+              disabled={startingNewCycle}
+              className="rounded-lg bg-amber-600 hover:bg-amber-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {startingNewCycle ? "Starting…" : "Start new recruitment cycle"}
+            </button>
+            <button
+              onClick={() => navigate("/member/recruitment")}
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900"
+            >
+              Back to recruitment
+            </button>
+          </div>
         </div>
       </div>
 
@@ -446,7 +603,7 @@ export default function Stage3VotingResultsPage() {
           title="Men results"
           rows={menResults}
           threshold={menThreshold}
-          onThresholdChange={setMenThreshold}
+          onThresholdChange={(value) => updateOfferThreshold("men", value)}
           isChair={isChair}
           onOfferAboveThreshold={() => offerAllAboveThreshold("men")}
           onFinalDecisionChange={updateFinalDecision}
@@ -459,7 +616,7 @@ export default function Stage3VotingResultsPage() {
           title="Women results"
           rows={womenResults}
           threshold={womenThreshold}
-          onThresholdChange={setWomenThreshold}
+          onThresholdChange={(value) => updateOfferThreshold("women", value)}
           isChair={isChair}
           onOfferAboveThreshold={() => offerAllAboveThreshold("women")}
           onFinalDecisionChange={updateFinalDecision}

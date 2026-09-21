@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import SignupPage from "./pages/SignupPage";
+import MemberSignupPage from "./pages/MemberSignupPage";
 import LoginPage from "./pages/LoginPage";
 import ProspieHome from "./pages/ProspieHome";
 import MemberHome from "./pages/MemberHome";
@@ -19,7 +20,7 @@ import DevSeedPage from "./pages/DevSeedPage";
 
 
 function AppHome() {
-  const { role, positions, loading } = useUserRole();
+  const { role, loading } = useUserRole();
 
   if (loading) return <div className="p-6">Loading…</div>;
 
@@ -34,6 +35,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/signup" element={<SignupPage />} />
+        <Route path="/signup/member" element={<MemberSignupPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/app" element={<AppHome />} />
 
@@ -54,7 +56,7 @@ export default function App() {
 
         <Route path="/member/recruitment/stage1/personality/:uid" element={<Stage1PersonalityInterviewPage />} />
 
-        <Route path="/member/recruitment/roster" element = {<RecruitmentRosterPage />} />
+        <Route path="/member/recruitment/roster/:day" element = {<RecruitmentRosterPage />} />
 
         <Route path="/member/recruitment/stage2/interview/:uid" element={<Stage2InterviewPage />} />
 

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { auth, db } from "../app/firebase";
-import { doc, onSnapshot, runTransaction, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, runTransaction, serverTimestamp } from "firebase/firestore";
+import MemberPicker from "../components/MemberPicker";
 
 type YesMaybeNo = "yes" | "maybe" | "no";
 
@@ -47,6 +48,7 @@ export default function Stage2InterviewPage() {
   const [notes1, setNotes1] = useState("");
   const [notes2, setNotes2] = useState("");
   const [practiceAvailability, setPracticeAvailability] = useState<PracticeDay[]>([]);
+  const [secondInterviewerUid, setSecondInterviewerUid] = useState<string | null>(null);
 
   function toggleDay(day: PracticeDay) {
     setPracticeAvailability((prev) =>
@@ -117,6 +119,25 @@ export default function Stage2InterviewPage() {
 
       const prospieRef = doc(db, "prospies", uid);
 
+      const myMemberSnap = await getDoc(doc(db, "members", myUid));
+      const myMemberData = myMemberSnap.data();
+      const eval1By = {
+        uid: myUid,
+        firstName: myMemberData?.firstName ?? "",
+        lastName: myMemberData?.lastName ?? "",
+      };
+
+      let eval2By: { uid: string; firstName: string; lastName: string } | null = null;
+      if (secondInterviewerUid) {
+        const secondSnap = await getDoc(doc(db, "members", secondInterviewerUid));
+        const secondData = secondSnap.data();
+        eval2By = {
+          uid: secondInterviewerUid,
+          firstName: secondData?.firstName ?? "",
+          lastName: secondData?.lastName ?? "",
+        };
+      }
+
       await runTransaction(db, async (tx) => {
         const snap = await tx.get(prospieRef);
         if (!snap.exists()) throw new Error("Prospie record not found.");
@@ -136,7 +157,8 @@ export default function Stage2InterviewPage() {
           stage2InterviewSummary: {
             completed: true,
             completedAt: serverTimestamp(),
-            interviewerUid: myUid,
+            eval1By,
+            eval2By,
             eval1,
             eval2,
             notes1,
@@ -265,6 +287,13 @@ export default function Stage2InterviewPage() {
               </select>
             </label>
           </div>
+
+          <MemberPicker
+            value={secondInterviewerUid}
+            onChange={setSecondInterviewerUid}
+            excludeUid={myUid}
+            label="Interviewer 2 (who gave that rating, optional)"
+          />
 
           <div>
             <div className="text-sm font-medium text-slate-700 mb-2">Practice availability</div>

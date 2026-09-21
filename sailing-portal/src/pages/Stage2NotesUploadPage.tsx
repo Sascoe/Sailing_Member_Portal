@@ -46,7 +46,7 @@ export default function Stage2NotesUploadPage() {
       q,
       (snap) => {
         const nextRows: Stage2NotesRow[] = snap.docs
-          .map((d) => {
+          .map((d): Stage2NotesRow | null => {
             const data = d.data() as any;
 
             const hasStage2Slot =

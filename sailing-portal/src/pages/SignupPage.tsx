@@ -195,7 +195,7 @@ return (
           required
         />
         <div className="mt-1 text-xs text-slate-500">
-          Upload a clear headshot (JPG/PNG).
+          Take and upload a picture of yourself RIGHT NOW. No pictures from your camera roll or Instagram!
         </div>
       </label>
 

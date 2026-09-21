@@ -84,6 +84,13 @@ export default function LoginPage() {
             Sign up
           </Link>
         </p>
+
+        <p className="text-sm text-center text-slate-600">
+          Existing club member setting up your account?{" "}
+          <Link to="/signup/member" className="font-medium text-purple-600 underline hover:text-purple-700">
+            Create member account
+          </Link>
+        </p>
       </form>
     </div>
   );

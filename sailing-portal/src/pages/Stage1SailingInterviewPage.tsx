@@ -8,12 +8,16 @@ import {
   runTransaction,
   serverTimestamp,
 } from "firebase/firestore";
+import MemberPicker from "../components/MemberPicker";
 
 type YesMaybeNo = "yes" | "maybe" | "no";
 
 type SailingQueueDoc = {
   uid: string;
-  name?: string;
+  firstName?: string;
+  lastName?: string;
+  photoUrl?: string
+  recruitmentDay?: number;
   email?: string;
   status?: "waiting" | "claimed";
   claimedBy?: string;
@@ -49,6 +53,7 @@ export default function Stage1SailingInterviewPage() {
   const [notes2, setNotes2] = useState("");
   const [hasSailingExperience, setHasSailingExperience] = useState(false);
   const [availability, setAvailability] = useState<AvailabilityKey[]>([]);  // e.g. ["thu_2_4", "fri_4_6"]
+  const [secondInterviewerUid, setSecondInterviewerUid] = useState<string | null>(null);
 
 
   // Load settings/global for the form URL
@@ -84,7 +89,7 @@ export default function Stage1SailingInterviewPage() {
         const ok =
           data.status === "claimed" && data.claimedBy && data.claimedBy === myUid;
 
-        setQueueDoc({ uid: snap.id, ...data });
+        setQueueDoc({ ...data, uid: snap.id });
         setAccessDenied(!ok);
         setLoading(false);
       },
@@ -98,8 +103,10 @@ export default function Stage1SailingInterviewPage() {
     return () => unsub();
   }, [uid, myUid]);
 
-  const displayName = useMemo(() => queueDoc?.name ?? "—", [queueDoc]);
-  const displayEmail = useMemo(() => queueDoc?.email ?? "—", [queueDoc]);
+  const displayFirstName = useMemo(() => queueDoc?.firstName ?? "—", [queueDoc]);
+  const displayLastName = useMemo(() => queueDoc?.lastName ?? "-", [queueDoc]);
+  const photoUrl = useMemo(() => queueDoc?.photoUrl ?? "", [queueDoc])
+  const displayEmail = useMemo(() => queueDoc?.email ?? "-", [queueDoc]);
 
     function toggleAvailability(key: AvailabilityKey) {
         setAvailability((prev) =>
@@ -120,7 +127,31 @@ export default function Stage1SailingInterviewPage() {
     try {
       const sailingQueueRef = doc(db, "stage1SailingQueue", uid);
       const prospieRef = doc(db, "prospies", uid);
-      const personalityQueueRef = doc(db, "stage1PersonalityQueue", uid);
+      // Sailing-experienced prospies go through the quiz queue first;
+      // everyone else goes straight to the personality queue.
+      const nextQueueCollection = hasSailingExperience
+        ? "stage1QuizQueue"
+        : "stage1PersonalityQueue";
+      const nextQueueRef = doc(db, nextQueueCollection, uid);
+
+      const myMemberSnap = await getDoc(doc(db, "members", myUid));
+      const myMemberData = myMemberSnap.data();
+      const eval1By = {
+        uid: myUid,
+        firstName: myMemberData?.firstName ?? "",
+        lastName: myMemberData?.lastName ?? "",
+      };
+
+      let eval2By: { uid: string; firstName: string; lastName: string } | null = null;
+      if (secondInterviewerUid) {
+        const secondSnap = await getDoc(doc(db, "members", secondInterviewerUid));
+        const secondData = secondSnap.data();
+        eval2By = {
+          uid: secondInterviewerUid,
+          firstName: secondData?.firstName ?? "",
+          lastName: secondData?.lastName ?? "",
+        };
+      }
 
       await runTransaction(db, async (tx) => {
         const sailingSnap = await tx.get(sailingQueueRef);
@@ -139,7 +170,10 @@ export default function Stage1SailingInterviewPage() {
         }
 
         // Prefer name/email from queue doc (already denormalized)
-        const name = q.name ?? prospieSnap.data()?.name ?? "";
+        const firstName = q.firstName ?? prospieSnap.data()?.firstName ?? "";
+        const lastName = q.lastName ?? prospieSnap.data()?.lastName ?? "";
+        const photoUrl = q.photoUrl ?? prospieSnap.data()?.photoUrl ?? "";
+        const recruitmentDay = q.recruitmentDay ?? prospieSnap.data()?.recruitmentDay ?? 1;
         const email = q.email ?? prospieSnap.data()?.email ?? "";
 
         // 1) Write summary to prospies/{uid}
@@ -147,7 +181,8 @@ export default function Stage1SailingInterviewPage() {
           stage1SailingInterviewSummary: {
             completed: true,
             completedAt: serverTimestamp(),
-            interviewerUid: myUid,
+            eval1By,
+            eval2By,
 
             //summary fields
             sailingEval1,
@@ -163,10 +198,13 @@ export default function Stage1SailingInterviewPage() {
         // 2) Remove from sailing queue
         tx.delete(sailingQueueRef);
 
-        // 3) Enqueue into personality queue
-        tx.set(personalityQueueRef, {
+        // 3) Enqueue into the quiz queue (if sailing-experienced) or personality queue
+        tx.set(nextQueueRef, {
           uid,
-          name,
+          firstName,
+          lastName,
+          photoUrl,
+          recruitmentDay,
           email,
           status: "waiting",
           enqueuedAt: serverTimestamp(),
@@ -213,7 +251,10 @@ export default function Stage1SailingInterviewPage() {
             Stage 1 — Sailing Interview
           </h1>
           <p className="text-slate-700">
-            Prospie: <span className="font-semibold">{displayName}</span>{" "}
+            Prospie: 
+            {photoUrl && <img src={photoUrl} alt="Profile photo" className="h-10 w-10 rounded-full object-cover" />}
+            <span className="font-semibold">{displayFirstName}</span>{" "}
+            <span className="font-semibold">{displayLastName}</span>{" "}
             <span className="text-slate-500">({displayEmail})</span>
           </p>
         </div>
@@ -284,6 +325,13 @@ export default function Stage1SailingInterviewPage() {
             </label>
           </div>
 
+          <MemberPicker
+            value={secondInterviewerUid}
+            onChange={setSecondInterviewerUid}
+            excludeUid={myUid}
+            label="Who gave Evaluation 2? (optional)"
+          />
+
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -350,7 +398,9 @@ export default function Stage1SailingInterviewPage() {
             disabled={submitting}
             className="w-full rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 font-semibold text-white disabled:opacity-50"
           >
-            {submitting ? "Completing…" : "Complete Sailing Interview → Send to Personality Queue"}
+            {submitting
+              ? "Completing…"
+              : `Complete Sailing Interview → Send to ${hasSailingExperience ? "Quiz" : "Personality"} Queue`}
           </button>
         </div>
       </div>

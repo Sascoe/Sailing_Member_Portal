@@ -7,7 +7,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
-import { auth, db } from "../app/firebase";
+import { db } from "../app/firebase";
 import { useUserRole } from "../auth/useUserRole";
 
 type PacketCategory = "auto_on" | "probably" | "maybe" | "probably_not";

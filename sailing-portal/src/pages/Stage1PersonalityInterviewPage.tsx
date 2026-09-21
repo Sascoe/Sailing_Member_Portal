@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { auth, db } from "../app/firebase";
-import { doc, onSnapshot, runTransaction, serverTimestamp} from "firebase/firestore";
+import { doc, getDoc, onSnapshot, runTransaction, serverTimestamp} from "firebase/firestore";
+import MemberPicker from "../components/MemberPicker";
 
 type YesMaybeNo = "yes" | "maybe" | "no";
 
 type PersonalityQueueDoc = {
   status?: "waiting" | "claimed";
   claimedBy?: string;
-  name?: string;
+  firstName?: string;
+  lastName?: string;
+  photoUrl?: string;
   email?: string;
 };
 
@@ -32,6 +35,7 @@ export default function Stage1PersonalityInterviewPage() {
   const [eval2, setEval2] = useState<YesMaybeNo>("maybe");
   const [notes1, setNotes1] = useState("");
   const [notes2, setNotes2] = useState("");
+  const [secondInterviewerUid, setSecondInterviewerUid] = useState<string | null>(null);
 
   // Load form URL from settings/global
   useEffect(() => {
@@ -122,6 +126,25 @@ export default function Stage1PersonalityInterviewPage() {
             const queueRef = doc(db, "stage1PersonalityQueue", uid);
             const prospieRef = doc(db, "prospies", uid);
 
+            const myMemberSnap = await getDoc(doc(db, "members", myUid));
+            const myMemberData = myMemberSnap.data();
+            const eval1By = {
+              uid: myUid,
+              firstName: myMemberData?.firstName ?? "",
+              lastName: myMemberData?.lastName ?? "",
+            };
+
+            let eval2By: { uid: string; firstName: string; lastName: string } | null = null;
+            if (secondInterviewerUid) {
+              const secondSnap = await getDoc(doc(db, "members", secondInterviewerUid));
+              const secondData = secondSnap.data();
+              eval2By = {
+                uid: secondInterviewerUid,
+                firstName: secondData?.firstName ?? "",
+                lastName: secondData?.lastName ?? "",
+              };
+            }
+
             await runTransaction(db, async (tx) => {
             // 1) Read queue doc inside tx
             const qSnap = await tx.get(queueRef);
@@ -139,13 +162,14 @@ export default function Stage1PersonalityInterviewPage() {
                 stage1PersonalityInterviewSummary: {
                 completed: true,
                 completedAt: serverTimestamp(),
-                interviewerUid: myUid,
+                eval1By,
+                eval2By,
                 eval1,
                 eval2,
                 notes1,
                 notes2,
                 },
-                stage1Complete: true, // marks Stage 1 complete → Can be evaluated 
+                stage1Complete: true, // marks Stage 1 complete → Can be evaluated
             });
 
             // 4) Remove from personality queue
@@ -168,10 +192,19 @@ export default function Stage1PersonalityInterviewPage() {
           <h1 className="text-2xl font-bold text-center text-purple-600">
             Stage 1 — Personality Interview
           </h1>
-          <p className="mt-1 text-slate-700">
-            {queueDoc?.name ?? "—"}{" "}
-            <span className="text-slate-500">
-              ({queueDoc?.email ?? "—"})
+          <p className="mt-1 flex items-center justify-center gap-2 text-slate-700">
+            {queueDoc?.photoUrl && (
+              <img
+                src={queueDoc.photoUrl}
+                alt="Profile photo"
+                className="h-10 w-10 rounded-full object-cover"
+              />
+            )}
+            <span>
+              {`${queueDoc?.firstName ?? ""} ${queueDoc?.lastName ?? ""}`.trim() || "—"}{" "}
+              <span className="text-slate-500">
+                ({queueDoc?.email ?? "—"})
+              </span>
             </span>
           </p>
         </div>
@@ -249,6 +282,13 @@ export default function Stage1PersonalityInterviewPage() {
               </select>
             </label>
           </div>
+
+          <MemberPicker
+            value={secondInterviewerUid}
+            onChange={setSecondInterviewerUid}
+            excludeUid={myUid}
+            label="Who gave Evaluation 2? (optional)"
+          />
 
           <label className="block">
             <div className="text-sm font-medium text-slate-700">

@@ -53,7 +53,7 @@ service cloud.firestore {
       allow create: if signedIn()
         && uid == myUid()
         && isNUEmail()
-        && request.resource.data.role == "prospie"
+        && (request.resource.data.role == "prospie" || request.resource.data.role == "member")
         && request.resource.data.email == myEmail();
 
       allow update: if signedIn() && (
@@ -97,6 +97,21 @@ service cloud.firestore {
       allow delete: if isChair();
     }
 
+    // ---------- Members ----------
+    match /members/{uid} {
+      allow read: if isChair() || isMember();
+
+      allow create: if signedIn()
+        && uid == myUid()
+        && isNUEmail()
+        && myRole() == "member";
+
+      allow update: if isChair()
+        || (signedIn() && uid == myUid() && myRole() == "member");
+
+      allow delete: if isChair();
+    }
+
     // ---------- Interviews ----------
     match /prospies/{prospieUid}/interviews/{interviewId} {
       allow read: if isChair()
@@ -123,7 +138,7 @@ service cloud.firestore {
         && isNUEmail()
         && request.resource.data.status == "waiting";
 
-      allow delete: if isChair() || (signedIn() && prospieUid == myUid());
+      allow delete: if isChair() || isMember() || (signedIn() && prospieUid == myUid());
 
       allow update: if isChair()
         || (isMember()
@@ -133,11 +148,21 @@ service cloud.firestore {
         );
     }
 
+    // ---------- Stage 1 Quiz Queue ----------
+    // Sailing-experienced prospies pass through here between the sailing and
+    // personality queues. No claim step — a member just checks them off,
+    // which deletes this doc and enqueues them into the personality queue.
+    match /stage1QuizQueue/{prospieUid} {
+      allow read: if isChair() || isMember() || (signedIn() && prospieUid == myUid());
+      allow create: if isChair() || isMember();
+      allow delete: if isChair() || isMember();
+    }
+
     // ---------- Stage 1 Personality Queue ----------
     match /stage1PersonalityQueue/{prospieUid} {
       allow read: if isChair() || isMember() || (signedIn() && prospieUid == myUid());
       allow create: if isChair() || isMember();
-      allow delete: if isChair();
+      allow delete: if isChair() || isMember();
 
       allow update: if isChair()
         || (isMember()
@@ -152,6 +177,14 @@ service cloud.firestore {
       allow read: if isChair() || (signedIn() && voterUid == myUid());
       allow create, update: if signedIn() && (voterUid == myUid() || isChair());
       allow delete: if isChair();
+    }
+
+    // ---------- Stage 3 Finalized Decisions ----------
+    // Written only by finalizeStage3 / sendStage3DecisionEmails via the
+    // Admin SDK (which bypasses these rules) — clients never write directly.
+    match /stage3FinalizedProspies/{prospieUid} {
+      allow read: if isChair();
+      allow write: if false;
     }
 
     // ---------- Default deny ----------

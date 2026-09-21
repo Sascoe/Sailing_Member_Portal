@@ -11,7 +11,8 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
-import { auth, db } from "../app/firebase";
+import { httpsCallable } from "firebase/functions";
+import { auth, db, functions } from "../app/firebase";
 import { useUserRole } from "../auth/useUserRole";
 
 type YesMaybeNo = "yes" | "maybe" | "no";
@@ -248,6 +249,23 @@ function PacketCard({
 }) {
   const [draftBlurb, setDraftBlurb] = useState(row.interviewBlurb);
   const [draftPacketNotes, setDraftPacketNotes] = useState(row.packetNotes);
+  const [generatingBlurb, setGeneratingBlurb] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+
+  async function handleGenerateBlurb() {
+    setGenerateError(null);
+    setGeneratingBlurb(true);
+    try {
+      const generate = httpsCallable(functions, "generateProspieBlurb");
+      const result: any = await generate({ uid: row.id });
+      setDraftBlurb(result.data.blurb ?? "");
+    } catch (e: any) {
+      console.error(e);
+      setGenerateError(e?.message ?? "Failed to generate blurb.");
+    } finally {
+      setGeneratingBlurb(false);
+    }
+  }
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -397,12 +415,26 @@ function PacketCard({
                   onChange={(e) => setDraftBlurb(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 bg-white p-3 text-sm text-slate-900"
                 />
-                <button
-                  onClick={() => onBlurbSave(row.id, draftBlurb)}
-                  className="rounded-lg bg-purple-600 hover:bg-purple-700 px-3 py-2 text-sm font-semibold text-white"
-                >
-                  Save blurb
-                </button>
+                {generateError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+                    {generateError}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => onBlurbSave(row.id, draftBlurb)}
+                    className="rounded-lg bg-purple-600 hover:bg-purple-700 px-3 py-2 text-sm font-semibold text-white"
+                  >
+                    Save blurb
+                  </button>
+                  <button
+                    onClick={handleGenerateBlurb}
+                    disabled={generatingBlurb}
+                    className="rounded-lg border border-purple-300 bg-white px-3 py-2 text-sm font-semibold text-purple-700 hover:bg-purple-50 disabled:opacity-50"
+                  >
+                    {generatingBlurb ? "Generating…" : "Generate from notes"}
+                  </button>
+                </div>
               </>
             ) : (
               <p className="text-sm leading-6 text-slate-700">{row.interviewBlurb}</p>
@@ -524,7 +556,7 @@ export default function Stage3PacketsPage() {
   const isChair = positions.includes("recruitment_chair");
   const myUid = auth.currentUser?.uid ?? null;
 
-  const [settings, setSettings] = useState<RecruitmentSettings["recruitment"]>({});
+  const [settings, setSettings] = useState<NonNullable<RecruitmentSettings["recruitment"]>>({});
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [rows, setRows] = useState<ProspieRow[]>([]);
   const [loadingRows, setLoadingRows] = useState(true);
@@ -775,6 +807,14 @@ export default function Stage3PacketsPage() {
         <p className="mt-2 text-slate-600">
           Chairs can build and publish packets. Members can vote once packets are published.
         </p>
+        {isChair && (
+          <button
+            onClick={() => navigate("/member/recruitment/stage3/results")}
+            className="mt-4 rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white"
+          >
+            View voting results & finalize
+          </button>
+        )}
       </div>
 
       {isChair && (

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   collection,
   onSnapshot,
@@ -55,6 +55,7 @@ type ProspieDoc = {
 
   stage1Complete?: boolean;
   stage1CompletedAt?: any;
+  recruitmentDay?: number;
 
   stage1Decision?: Stage1Decision;
   stage1DecisionUpdatedAt?: any;
@@ -83,25 +84,10 @@ function totalScore(p: ProspieDoc) {
   );
 }
 
-// Convert Firestore Timestamp-ish to millis safely
-function toMillis(ts: any): number | null {
-  if (!ts) return null;
-  if (typeof ts.toMillis === "function") return ts.toMillis();
-  if (typeof ts.seconds === "number") return ts.seconds * 1000;
-  return null;
-}
-
-// Local date key YYYY-MM-DD (local timezone, not UTC)
-function localDateKey(ms: number): string {
-  const d = new Date(ms);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
 export default function RecruitmentRosterPage() {
   const navigate = useNavigate();
+  const { day } = useParams<{ day: string }>();
+  const dayScope: "1" | "2" | "all" = day === "1" ? "1" : day === "2" ? "2" : "all";
   const { positions, loading: roleLoading } = useUserRole();
   const isRecruitmentChair = positions?.includes("recruitment_chair") ?? false;
 
@@ -114,7 +100,6 @@ export default function RecruitmentRosterPage() {
   type SortDir = "asc" | "desc";
 
   // Filters (ordered in UI later)
-  const [dayFilter, setDayFilter] = useState<"all" | "day1" | "day2">("all");
   const [minScore, setMinScore] = useState<number>(0);
   const [sailingExpFilter, setSailingExpFilter] = useState<string>("all");
   const [genderFilter, setGenderFilter] = useState<string>("all");
@@ -203,15 +188,35 @@ export default function RecruitmentRosterPage() {
     }
   }
 
+  async function handleContinueToDay2() {
+    if (!confirm("Finish Day 1 decisions and open Day 2 check-in?")) return;
+
+    await updateDoc(doc(db, "settings", "global"), {
+      "recruitment.stage1Phase": "day2_interviews",
+    });
+    navigate("/member/recruitment");
+  }
+
+  async function handleContinueToFullDecisions() {
+    if (!confirm("Finish Day 2 decisions and move to the full decisions list?")) return;
+
+    await updateDoc(doc(db, "settings", "global"), {
+      "recruitment.stage1Phase": "final_decisions",
+    });
+    navigate("/member/recruitment/roster/all");
+  }
+
   useEffect(() => {
     if (!isRecruitmentChair) return;
 
     setLoading(true);
 
-    const q = query(
-      collection(db, "prospies"),
-      where("stage1Complete", "==", true)
-    );
+    const clauses = [where("stage1Complete", "==", true)];
+    if (dayScope !== "all") {
+      clauses.push(where("recruitmentDay", "==", Number(dayScope)));
+    }
+
+    const q = query(collection(db, "prospies"), ...clauses);
 
     const unsub = onSnapshot(
       q,
@@ -230,43 +235,11 @@ export default function RecruitmentRosterPage() {
     );
 
     return () => unsub();
-  }, [isRecruitmentChair]);
-
-  // Determine Day 1 / Day 2 based on unique completion dates present in data
-  const completionDates = useMemo(() => {
-    const set = new Set<string>();
-
-    for (const p of prospies) {
-      const ms =
-        toMillis(p.data.stage1PersonalityInterviewSummary?.completedAt) ??
-        toMillis(p.data.stage1CompletedAt);
-
-      if (ms != null) set.add(localDateKey(ms));
-    }
-
-    return Array.from(set).sort(); // earliest date = Day 1
-  }, [prospies]);
+  }, [isRecruitmentChair, dayScope]);
 
   const visibleRows = useMemo(() => {
-    const day1Key = completionDates[0] ?? null;
-    const day2Key = completionDates[1] ?? null;
-
     // 1) filter
     const filtered = prospies.filter(({ data }) => {
-      // Day filter
-      if (dayFilter !== "all") {
-        const ms =
-          toMillis(data.stage1PersonalityInterviewSummary?.completedAt) ??
-          toMillis(data.stage1CompletedAt);
-
-        const key = ms != null ? localDateKey(ms) : null;
-
-        if (dayFilter === "day1" && day1Key && key !== day1Key) return false;
-        if (dayFilter === "day2" && day2Key && key !== day2Key) return false;
-
-        if (dayFilter === "day2" && !day2Key) return false;
-      }
-
       // Min score filter
       const score = totalScore(data);
       if (score < minScore) return false;
@@ -325,8 +298,6 @@ export default function RecruitmentRosterPage() {
     return sorted;
   }, [
     prospies,
-    completionDates,
-    dayFilter,
     minScore,
     sailingExpFilter,
     genderFilter,
@@ -372,7 +343,6 @@ export default function RecruitmentRosterPage() {
   }
 
   function resetFilters() {
-    setDayFilter("all");
     setMinScore(0);
     setSailingExpFilter("all");
     setGenderFilter("all");
@@ -385,15 +355,19 @@ export default function RecruitmentRosterPage() {
   if (!isRecruitmentChair) return <div className="p-6">Access denied</div>;
   if (loading) return <div className="p-6">Loading roster…</div>;
 
-  const day1Label = completionDates[0] ? `Day 1 (${completionDates[0]})` : "Day 1";
-  const day2Label = completionDates[1] ? `Day 2 (${completionDates[1]})` : "Day 2";
+  const pageTitle =
+    dayScope === "1"
+      ? "Day 1 — Stage 1 Decisions"
+      : dayScope === "2"
+      ? "Day 2 — Stage 1 Decisions"
+      : "Stage 1 — Full Decisions";
 
   return (
     <div className="min-h-screen p-6">
       <div className="mx-auto max-w-6xl rounded-2xl bg-white p-6 shadow">
         <div className="space-y-2">
           <h1 className="text-2xl font-bold text-center text-purple-600">
-            Stage 1 Completed Prospies
+            {pageTitle}
           </h1>
 
           <div className="flex flex-wrap gap-3 text-sm text-slate-700">
@@ -414,55 +388,63 @@ export default function RecruitmentRosterPage() {
               <span className="font-semibold text-slate-900">{counts.drop}</span>
             </div>
 
-            {/* Assign Stage 2 Slots */}
-            <button
-              type="button"
-              onClick={handleAssignStage2Slots}
-              disabled={assigningSlots || finalizingStage1}
-              className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              {assigningSlots ? "Assigning…" : "Assign Stage 2 Slots"}
-            </button>
-
-            {/* Finalize Stage 1 */}
-            <div className="flex flex-col items-start gap-1">
+            {dayScope === "1" && (
               <button
                 type="button"
-                onClick={handleFinalizeStage1}
-                disabled={finalizingStage1 || assigningSlots || advancingWithoutSlot > 0}
-                className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleContinueToDay2}
+                className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white"
               >
-                {finalizingStage1 ? "Finalizing…" : "Finalize Stage 1"}
+                Continue to Day 2
               </button>
-              {advancingWithoutSlot > 0 && (
-                <p className="text-xs text-amber-700">
-                  {advancingWithoutSlot} advancing prospie{advancingWithoutSlot !== 1 ? "s" : ""} missing a slot
-                </p>
-              )}
-            </div>
+            )}
+
+            {dayScope === "2" && (
+              <button
+                type="button"
+                onClick={handleContinueToFullDecisions}
+                className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white"
+              >
+                Continue to Full Decisions
+              </button>
+            )}
+
+            {dayScope === "all" && (
+              <>
+                {/* Assign Stage 2 Slots */}
+                <button
+                  type="button"
+                  onClick={handleAssignStage2Slots}
+                  disabled={assigningSlots || finalizingStage1}
+                  className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {assigningSlots ? "Assigning…" : "Assign Stage 2 Slots"}
+                </button>
+
+                {/* Finalize Stage 1 */}
+                <div className="flex flex-col items-start gap-1">
+                  <button
+                    type="button"
+                    onClick={handleFinalizeStage1}
+                    disabled={finalizingStage1 || assigningSlots || advancingWithoutSlot > 0}
+                    className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {finalizingStage1 ? "Finalizing…" : "Finalize Stage 1"}
+                  </button>
+                  {advancingWithoutSlot > 0 && (
+                    <p className="text-xs text-amber-700">
+                      {advancingWithoutSlot} advancing prospie{advancingWithoutSlot !== 1 ? "s" : ""} missing a slot
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
         {/* Filters row */}
         <div className="mt-4 flex flex-wrap items-end justify-between gap-4">
           <div className="flex flex-wrap gap-3">
-            {/* 1) Day */}
-            <label className="block">
-              <div className="text-xs font-medium text-slate-600">Day</div>
-              <select
-                value={dayFilter}
-                onChange={(e) => setDayFilter(e.target.value as any)}
-                className="mt-1 rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-900"
-              >
-                <option value="all">All</option>
-                <option value="day1">{day1Label}</option>
-                <option value="day2" disabled={completionDates.length < 2}>
-                  {day2Label}
-                </option>
-              </select>
-            </label>
-
-            {/* 2) Min score */}
+            {/* Min score */}
             <label className="block">
               <div className="text-xs font-medium text-slate-600">Min score</div>
               <input
